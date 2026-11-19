@@ -13,8 +13,9 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <!-- ?v=dev is swapped for the commit id on deploy, so phones never mix old and new files -->
+  <link rel="stylesheet" href="style.css?v=dev">
+  <script src="app.js?v=dev" defer></script>
 </head>
 <body>
   <main id="app" class="idle">

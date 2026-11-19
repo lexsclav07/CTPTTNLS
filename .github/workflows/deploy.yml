@@ -43,6 +43,9 @@ jobs:
           git commit -m "Refresh bottle shop list"
           git push
 
+      - name: Cache-bust scripts and styles
+        run: sed -i "s/?v=dev/?v=${GITHUB_SHA::7}/g" index.html
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
