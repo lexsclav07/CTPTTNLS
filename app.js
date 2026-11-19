@@ -32,8 +32,8 @@ const OVERPASS = [
 // ------------------------------------------------------------------- state --
 
 const $ = (id) => document.getElementById(id);
-const app = $("app"), wrap = $("wrap"), dialEl = $("dial");
-const labelEl = $("label"), distEl = $("dist"), nameEl = $("name");
+const app = $("app"), dialEl = $("dial");
+const distEl = $("dist"), nameEl = $("name"), othersEl = $("others");
 const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
 
 let shops = [];          // [{lat, lon, name}]
@@ -144,8 +144,7 @@ function pickTargets() {
     best.splice(i, 0, { shop, d });
     if (best.length > ARROWS) best.pop();
   }
-  // Arrows whose shop changed swing over from where they were.
-  targets = best;
+  targets = best; // arrows whose shop changed swing over from where they were
 
   if (best.length) {
     distEl.textContent = needsTap ? "" : formatDistance(best[0].d);
@@ -154,6 +153,16 @@ function pickTargets() {
     distEl.textContent = "";
     nameEl.textContent = "None nearby";
   }
+
+  // The next five, smaller, under the main readout.
+  othersEl.replaceChildren(...best.slice(1).map(({ shop, d }) => {
+    const li = document.createElement("li");
+    const n = document.createElement("span"), m = document.createElement("span");
+    n.className = "n"; n.textContent = shop.name;
+    m.className = "d"; m.textContent = formatDistance(d);
+    li.append(n, m);
+    return li;
+  }));
 }
 
 // ---------------------------------------------------------------- heading --
@@ -208,21 +217,7 @@ function frame() {
   if (on && !wasOnTarget && navigator.vibrate) navigator.vibrate(25);
   wasOnTarget = on;
 
-  placeLabel();
   requestAnimationFrame(frame);
-}
-
-// The name + distance tag hangs off the tail of the main arrow, on the far
-// side of the centre, pushed out just far enough that it never overlaps it.
-function placeLabel() {
-  let x = 0, y = 0;
-  if (angles[0] !== null) {
-    const a = rad(angles[0]), ux = Math.sin(a), uy = -Math.cos(a); // arrow direction
-    const gap = wrap.clientWidth * 0.05; // clears the hub in the middle
-    const r = (labelEl.offsetWidth / 2) * Math.abs(ux) + (labelEl.offsetHeight / 2) * Math.abs(uy) + gap;
-    x = -ux * r; y = -uy * r;
-  }
-  labelEl.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
 }
 
 // --------------------------------------------------------------- location --

@@ -1,8 +1,9 @@
 # Bottlo Compass
 
 A compass that points to the nearest bottle shops. There's no map: a big
-arrow points to the closest one, labelled with its name and distance, and five
-faint arrows point to the next five. It has a built-in list for Greater Sydney,
+arrow points to the closest one and five faint arrows point to the next five.
+Underneath are the nearest shop's distance and name, then a smaller list of the
+next five. It has a built-in list for Greater Sydney,
 the Central Coast, Newcastle, Lake Macquarie, Maitland, Port Stephens and the
 lower Hunter. Anywhere else (WA, Tasmania, overseas) it looks shops up live.
 
