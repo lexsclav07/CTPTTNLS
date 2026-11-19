@@ -384,9 +384,18 @@ main.landscape .side {
   overscroll-behavior: contain;
   padding: 8px 0 32px;
   -webkit-overflow-scrolling: touch;
-  /* fade the bottom edge so it's clear there's more to scroll to */
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+/* Fade the bottom edge so it's clear there's more to scroll to. A sticky
+   gradient rather than a mask, which would make every redraw costlier. */
+main.landscape .side::after {
+  content: "";
+  position: sticky;
+  bottom: -32px;
+  flex: none;
+  height: 32px;
+  margin-top: -32px;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
 }
 main.landscape .readout { text-align: left; }
 main.landscape .others { width: 100%; flex: none; }
@@ -404,6 +413,7 @@ main.landscape .sensors { display: block; }
 }
 .sensors h2:first-child { margin-top: 4px; }
 .sensors dl {
+  contain: layout paint;       /* values change every frame; keep the relayout in here */
   padding-left: 16px;
   border-radius: 12px;
   background: var(--group-bg);

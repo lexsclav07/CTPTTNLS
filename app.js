@@ -4,7 +4,7 @@
 
 const ARROWS = 6;         // the nearest shop + the next 5
 const ON_TARGET_DEG = 12; // main arrow goes green when you're facing the shop
-const UPDATE_MS = 500;    // how often distances, the list and the sensor panel refresh
+const UPDATE_MS = 500;    // how often location is requested and distances and the list refresh
 
 // Phones report heading against magnetic north; shop bearings are against true
 // north. The gap (declination) is +12.8° in Sydney but -1.5° in Perth, so look
@@ -177,10 +177,11 @@ function pickTargets() {
     best.length = Math.min(best.length, ARROWS);
   }
   targets = best; // arrows whose shop changed swing over from where they were
-  $("nearest").hidden = !pinned;
+  if ($("nearest").hidden !== !pinned) $("nearest").hidden = !pinned;
 
   if (best.length) {
-    distEl.textContent = needsTap ? "" : formatDistance(best[0].d);
+    const dist = needsTap ? "" : formatDistance(best[0].d);
+    if (distEl.textContent !== dist) distEl.textContent = dist;
     if (needsTap) status("Tap to start"); else showShop(best[0].shop);
   } else {
     distEl.textContent = "";
@@ -358,6 +359,7 @@ function frame(now) {
   }
 
   placeLabels();
+  if (isLandscape && sensorRows) updateSensors();
 
   // Main arrow: green when you're facing the shop, through yellow and orange,
   // to red when it's behind you.
@@ -445,25 +447,42 @@ function placeLabels() {
 
 // --------------------------------------------------------------- location --
 
+function onPosition(pos) {
+  // The watch and the half-second request can hand over the same fix.
+  if (raw.pos && pos.timestamp === raw.pos.timestamp) return;
+  const now = performance.now();
+  if (raw.posAt) raw.fixGap = now - raw.posAt;
+  raw.pos = pos; raw.posAt = now; raw.posCount++;
+  here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  decl = declination(here.lat, here.lon);
+  pickTargets();
+}
+
+function onPositionError(err) {
+  if (err.code === err.PERMISSION_DENIED) {
+    locationOff = true;
+    distEl.textContent = "";
+    status("Location off");
+  }
+}
+
 function startLocation() {
   if (!navigator.geolocation) { status("No location"); return; }
   status("Locating…");
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      raw.pos = pos; raw.posCount++;
-      decl = declination(here.lat, here.lon);
-      pickTargets();
-    },
-    (err) => {
-      if (err.code === err.PERMISSION_DENIED) {
-        locationOff = true;
-        distEl.textContent = "";
-        status("Location off");
-      }
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }, // always a fresh fix
-  );
+  const fresh = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
+  navigator.geolocation.watchPosition(onPosition, onPositionError, fresh);
+  // The watch only fires when the phone feels like it; also ask outright every
+  // half second (one request at a time). The phone still decides how often it
+  // has a genuinely new fix - usually about once a second.
+  let asking = false;
+  setInterval(() => {
+    if (asking || locationOff || document.hidden) return;
+    asking = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { asking = false; onPosition(pos); },
+      () => { asking = false; },
+      { ...fresh, timeout: 5000 });
+  }, UPDATE_MS);
 }
 
 // ------------------------------------------------------------- wake lock ---
@@ -513,7 +532,7 @@ if (landscapeMq.addEventListener) landscapeMq.addEventListener("change", () => a
 else landscapeMq.addListener(() => applyLayout(true));
 
 // ---------------------------------------------------------------- sensors --
-// Everything the page reads, refreshed every UPDATE_MS while it's showing.
+// Everything the page reads, redrawn every frame while it's showing.
 
 const num = (v, d = 1, unit = "") => (typeof v === "number" && isFinite(v) ? `${v.toFixed(d)}${unit}` : "—");
 const xyz = (o, d = 2) => (o && o.x !== null && o.x !== undefined ? `${num(o.x, d)}  ${num(o.y, d)}  ${num(o.z, d)}` : "—");
@@ -528,7 +547,9 @@ const SENSORS = [
     ["Altitude accuracy", () => num(raw.pos?.coords.altitudeAccuracy, 0, " m")],
     ["Speed", () => (raw.pos?.coords.speed == null ? "—" : `${num(raw.pos.coords.speed, 1, " m/s")}  (${num(raw.pos.coords.speed * 3.6, 0, " km/h")})`)],
     ["GPS course", () => num(raw.pos?.coords.heading, 0, "°")],
-    ["Last fix", () => (raw.pos ? `${((Date.now() - raw.pos.timestamp) / 1000).toFixed(1)} s ago` : "—")],
+    ["Since last fix", () => (raw.posAt ? `${((performance.now() - raw.posAt) / 1000).toFixed(2)} s` : "—")],
+    ["Time between fixes", () => (raw.fixGap ? `${(raw.fixGap / 1000).toFixed(2)} s` : "—")],
+    ["Location requested", () => `every ${UPDATE_MS / 1000} s`],
     ["Fixes", () => String(raw.posCount)],
   ]],
   ["Compass (device orientation)", [
@@ -581,7 +602,7 @@ const SENSORS = [
   ]],
 ];
 
-let sensorRows = null, sensorTimer = null;
+let sensorRows = null;
 function renderSensors() {
   const box = $("sensors");
   if (!sensorRows) {
@@ -603,16 +624,15 @@ function renderSensors() {
     box.append(note);
     startExtraSensors();
   }
-  clearInterval(sensorTimer);
-  const tick = () => {
-    if (!isLandscape) { clearInterval(sensorTimer); return; }
-    for (const [dd, get] of sensorRows) {
-      let v; try { v = get(); } catch { v = "—"; }
-      if (dd.textContent !== v) dd.textContent = v;
-    }
-  };
-  tick();
-  sensorTimer = setInterval(tick, UPDATE_MS);
+}
+
+// Called from frame(), so the panel moves as smoothly as the compass. Only
+// values that actually changed are written.
+function updateSensors() {
+  for (const [dd, get] of sensorRows) {
+    let v; try { v = get(); } catch { v = "—"; }
+    if (dd.textContent !== v) dd.textContent = v;
+  }
 }
 
 // Extras some browsers have (mostly Chrome on Android): battery, magnetometer, light.
