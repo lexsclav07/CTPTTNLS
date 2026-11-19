@@ -1,194 +1,43 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Nearest Liquor Store Compass</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { text-align:center; font-family:sans-serif; padding:50px; }
-    #arrow { font-size:100px; transition: transform 0.2s; display:block; margin:50px auto; }
-    #status { margin-top:20px; font-size:18px; }
-    #storeName { margin-top:10px; font-size:20px; font-weight:bold; }
-    button { padding:10px 20px; font-size:16px; margin-top:20px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Bottlo Compass</title>
+  <meta name="description" content="A compass that points to the nearest open bottle shop in Sydney, the Central Coast and Newcastle.">
+  <meta name="author" content="Lex Sclavos">
+  <meta name="theme-color" content="#0d0d0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bottlo">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
-  <h1>Liquor Store Compass</h1>
-  <div id="arrow">⬆️</div>
-  <div id="storeName">Finding nearest store...</div>
-  <div id="status"></div>
-  <button id="enableCompass">Enable Compass (iOS/Some Devices)</button>
+  <main id="app" class="idle">
+    <div class="dial-wrap">
+      <svg id="dial" class="dial" viewBox="0 0 100 100" aria-hidden="true">
+        <g id="ticks"></g>
+        <text x="50" y="16.5" class="north">N</text>
+      </svg>
+      <svg id="arrow" class="arrow" viewBox="0 0 100 100" role="img" aria-label="Direction to the shop">
+        <path d="M50 14 L71 80 L50 67 L29 80 Z"/>
+      </svg>
+    </div>
 
-  <script>
-    const stores = [
-      [-33.42509856010387, 151.4005849099215, "Erina Heights Cellars"],
-      [-33.4250631345368, 151.40076524839702, "Liquor Stax"],
-      [-33.43656579333284, 151.39213818316568, "Liquorland Erina"],
-      [-33.43933618191193, 151.39526996423032, "BWS Erina"],
-      [-33.43530660984563, 151.38824521624645, "Ritchies IGA Plus Liquor Erina"],
-      [-33.438784310714745, 151.38307595269652, "Dan Murphy's Erina"],
-      [-33.40437416055683, 151.35090244576622, "Cellarbrations Wyoming"],
-      [-33.42357076090118, 151.43809173182004, "Wamberal Wine Palace"],
-      [-33.44650024316015, 151.37329415598862, "Liquorland Green Point"],
-      [-33.46731332342355, 151.38291766731953, "Liquorland Kincumber"],
-      [-33.437583287812, 151.35355843628196, "BamVino Cellars East Gosford"],
-      [-33.451297428095025, 151.3603736549651, "BAMVINO CELLARS GREEN POINT"],
-      [-33.464734097272185, 151.433195736931, "BWS Avoca Beach"],
-      [-33.404201603941374, 151.34995945707388, "BWS Wyoming"],
-      [-33.47586745193112, 151.35279894481545, "Liquorland Saratoga"],
-      [-33.464634735396814, 151.4335924544573, "Store 16BWS Avoca Beach"],
-      [-33.42536939179827, 151.34401860936396, "BWS Gosford"],
-      [-33.446737960093614, 151.44490602444125, "Vintage Cellars Terrigal"],
-      [-33.418355241728946, 151.4466180553129, "BWS Wamberal"],
-      [-33.441284595838844, 151.43985012103394, "Terrigal Supercellars"],
-      [-33.42692081694573, 151.34188796618304, "Ice Box Liquor Gosford"],
-      [-33.38468812168569, 151.36794978258857, "Liquorland Lisarow"],
-      [-33.46882065750956, 151.3833708760099, "Kincumber Cellars"],
-      [-33.42662952807753, 151.32974977902265, "Oldfield Cellars"],
-      [-33.38611158475272, 151.3678741612028, "BWS Lisarow"],
-      [-33.39392845930338, 151.34315392759802, "THE BOTTLE-O AT NARARA"],
-      [-33.42334189051394, 151.43843286155408, "Cellarbrations"],
-      [-33.4384599560632, 151.35549687135432, "Bottlemart - Elanora Hotel"],
-      [-33.42714730990703, 151.32253931288346, "Dan Murphy's West Gosford"],
-      [-33.40574305110892, 151.46643367463273, "Cellarbrations"],
-      [-33.36302481979738, 151.37098434665816, "Super Cellars"],
-      [-33.428383632144595, 151.31701761461525, "Liquorland West Gosford"],
-      [-33.49063724420179, 151.43122147765297, "Copacabana Cellars"],
-      [-33.48729915112663, 151.32426323488508, "Liquorland Woy Woy"],
-      [-33.446469464221686, 151.44422674003414, "Terrigal Bottler"],
-      [-33.36635968155232, 151.46392490683547, "The Bottle-O"],
-      [-33.388681238864294, 151.4736973520234, "Bateau Bay Cellars"],
-      [-33.493660565694434, 151.36376520002796, "Empire Bay Cellars"],
-      [-33.38596308541262, 151.4622968409366, "BWS Bateau Bay (Cresthaven Ave)"],
-      [-33.375296406516895, 151.47359009314943, "Liquorland Bateau Bay"],
-      [-33.364485073468565, 151.46642344296095, "The Bottle-O"],
-      [-33.3868155695405, 151.47842210644131, "Bateau Bay Cellars"],
-      [-33.427033608487235, 151.31245181617462, "Liquorland West Gosford"],
-      [-33.361472203459215, 151.37734420611233, "Super Cellars"],
-      [-33.336944644307074, 151.44582512907155, "Berkeley Vale Cellars"],
-      [-33.36470209920942, 151.4709792527939, "Liquor Stax"],
-      [-33.34237974238731, 151.502034836228, "Bottlemart"],
-      [-33.44440182043777, 151.32790474581887, "BamVino Cellars Point Clare"],
-      [-33.36043993905675, 151.47859787148914, "BWS Long Jetty"],
-      [-33.34416529483127, 151.48396429753214, "Liquorland The Entrance"],
-      [-33.52155505591805, 151.36992125602657, "Killcare Cellars & General Store"],
-      [-33.36098581557185, 151.4450182151852, "Mingara Bottle Shop"],
-      [-33.35621702959228, 151.5049793198614, "Toowoon Bay Cellars"],
-      [-33.48278291528586, 151.3704427709741, "Davistown Cellars"],
-      [-33.30656032098069, 151.41950725044643, "Dan Murphy's Tuggerah"],
-      [-33.37291185436804, 151.48030035859637, "Dan Murphy's Bateau Bay"],
-      [-33.380748989293274, 151.3594866776976, "The Valley Tavern"],
-      [-33.46137879558813, 151.37062276436498, "Upstairs Wines"],
-      [-33.513168843015976, 151.34003237407083, "BWS Ettalong"],
-      [-33.27426495169368, 151.49471938568152, "Wyongah Liquor Store"],
-      [-33.32626562642463, 151.4262035347371, "Chittaway Bay Bottle Shop"],
-      [-33.508849373185626, 151.3739220124838, "Bottlemart - Empire Bay Tavern"],
-      [-33.28319572138146, 151.42493760698886, "Liquorland Wyong"],
-      [-33.520474307036686, 151.32429997316987, "BWS Umina"],
-      [-33.428067138727904, 151.31704413629222, "WineSquare"],
-      [-33.307070461080805, 151.41385377788194, "BWS Tuggerah"],
-      [-33.47375755155637, 151.39210527075917, "Cellarbrations"],
-      [-33.59769368691843, 151.32190742331855, "Palm Beach Wine Co"],
-      [-33.32640190358826, 151.43199648920978, "Cellarbrations"],
-      [-33.23953266469015, 151.50838853124313, "Liquorland Lake Haven"],
-      [-33.520732086187316, 151.31694346803988, "BWS Umina Drive"],
-      [-33.26276146387248, 151.54271814644054, "Liquorland Toukley"],
-      [-33.51417137033397, 151.31909552013406, "Cellarbrations Umina"],
-      [-33.26437138369288, 151.4675981726935, "Cellarbrations"],
-      [-33.344088066047966, 151.49772832683138, "Cellarbrations The Entrance"],
-      [-33.25286413971958, 151.49621911958462, "BYO Cellars"]
-      // ... keep adding more stores, each separated by a comma
-    ];
+    <div class="readout" aria-live="polite">
+      <div id="dist" class="dist"></div>
+      <div id="name" class="name">Loading…</div>
+    </div>
 
-    let myLat = null;
-    let myLng = null;
-    let nearestStore = null;
+    <button id="open" class="toggle" type="button" aria-pressed="true">
+      <span class="dot"></span>Open now
+    </button>
 
-    function showStatus(text) {
-      document.getElementById("status").innerText = text;
-    }
-
-    function updateNearestStore() {
-      if (myLat === null || myLng === null) return;
-      let minDist = Infinity;
-      let closest = null;
-      for (const store of stores) {
-        const d = distance(myLat, myLng, store[0], store[1]);
-        if (d < minDist) {
-          minDist = d;
-          closest = store;
-        }
-      }
-      nearestStore = closest;
-      document.getElementById("storeName").innerText = nearestStore[2];
-    }
-
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (pos) => {
-          myLat = pos.coords.latitude;
-          myLng = pos.coords.longitude;
-          updateNearestStore();
-        },
-        () => showStatus("Geolocation permission denied.")
-      );
-    } else {
-      showStatus("Geolocation not supported.");
-    }
-
-    function distance(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const toRad = x => x * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
-
-    function bearing(lat1, lon1, lat2, lon2) {
-      const toRad = d => d * Math.PI / 180;
-      const toDeg = r => r * 180 / Math.PI;
-      const dLon = toRad(lon2 - lon1);
-      lat1 = toRad(lat1);
-      lat2 = toRad(lat2);
-      const y = Math.sin(dLon) * Math.cos(lat2);
-      const x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
-      return (toDeg(Math.atan2(y, x)) + 360) % 360;
-    }
-
-    function handleOrientation(event) {
-      if (myLat !== null && nearestStore !== null) {
-        let heading = event.absolute ? event.alpha : event.alpha || 0;
-        heading = 360 - heading;
-        const targetBearing = bearing(myLat, myLng, nearestStore[0], nearestStore[1]);
-        const diff = targetBearing - heading;
-        const rotation = (diff + 360) % 360;
-        document.getElementById("arrow").style.transform = `rotate(${rotation}deg)`;
-      }
-    }
-
-    document.getElementById("enableCompass").addEventListener("click", () => {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then(response => {
-            if (response === 'granted') {
-              window.addEventListener("deviceorientationabsolute", handleOrientation);
-              window.addEventListener("deviceorientation", handleOrientation);
-              showStatus("Compass enabled! Point your device toward the store.");
-            } else {
-              showStatus("Compass permission denied.");
-            }
-          })
-          .catch(console.error);
-      } else {
-        window.addEventListener("deviceorientationabsolute", handleOrientation);
-        window.addEventListener("deviceorientation", handleOrientation);
-        showStatus("Compass enabled! Point your device toward the store.");
-      }
-    });
-  </script>
-  <h3>By Lex Sclavos</h3>
+    <a class="credit" href="https://github.com/lexsclav07/Compass-that-points-to-the-nearest-liquor-store#data" aria-label="Data credits">©</a>
+  </main>
 </body>
 </html>
-
