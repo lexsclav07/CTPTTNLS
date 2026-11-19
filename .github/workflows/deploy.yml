@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: "37 17 * * *" # daily, ~4:37am Sydney time
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: Re-download the shop data first
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -22,9 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Daily, and on manual runs. The /test/ preview skips it (refresh=false).
       - name: Refresh bottle shop list
-        if: github.event_name != 'push'
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh)
         continue-on-error: true # a flaky data source shouldn't stop the deploy
+        timeout-minutes: 10
         run: |
           pip install --quiet openpyxl
           python3 scripts/update_shops.py
@@ -34,7 +41,7 @@ jobs:
       # contribution graph; delete these two git config lines to commit as
       # github-actions[bot] instead.
       - name: Commit updated list
-        if: github.event_name != 'push'
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh)
         run: |
           git add data/
           if git diff --cached --quiet; then echo "No changes."; exit 0; fi
