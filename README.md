@@ -20,6 +20,10 @@ full-screen like an app.
 - Tap a shop in the list to point the main arrow at it instead. **‹ Nearest**
   (top left) goes back to the closest shop.
 - **km / mi** (top right) switches between metric and imperial distances.
+- The filter button (top right) picks which places to point at: bottle shops,
+  pubs, bars and clubs (RSLs, leagues, bowling clubs and nightclubs), from NSW
+  hotel, small bar and club licences plus OpenStreetMap
+  (`scripts/update_places.py` builds `data/places.json`).
 - The look follows Apple's Human Interface Guidelines: iOS system colours,
   Light/Dark Mode, Dynamic Type, spring animations and Reduce Motion support.
 

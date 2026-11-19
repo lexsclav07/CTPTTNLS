@@ -174,9 +174,12 @@ def fetch_nsw():
 
 # ------------------------------------------------------ source: OSM ---------
 
-def overpass(bbox):
+BOTTLE_SHOPS = '"shop"~"^(alcohol|wine)$"'
+
+
+def overpass(bbox, what=BOTTLE_SHOPS):
     s, w, n, e = bbox
-    q = f'[out:json][timeout:90];nwr["shop"~"^(alcohol|wine)$"]({s},{w},{n},{e});out center tags;'
+    q = f'[out:json][timeout:90];nwr[{what}]({s},{w},{n},{e});out center tags;'
     last = None
     for url in OVERPASS:
         try:
@@ -190,10 +193,10 @@ def overpass(bbox):
     raise last
 
 
-def overpass_area(bbox, depth=0):
+def overpass_area(bbox, depth=0, what=BOTTLE_SHOPS):
     """Public mirrors often time out on a big box - split it into quarters if so."""
     try:
-        return overpass(bbox)
+        return overpass(bbox, what)
     except Exception:
         if depth >= 2:
             raise
@@ -201,7 +204,7 @@ def overpass_area(bbox, depth=0):
         mlat, mlon = (s + n) / 2, (w + e) / 2
         out = []
         for part in ((s, w, mlat, mlon), (s, mlon, mlat, e), (mlat, w, n, mlon), (mlat, mlon, n, e)):
-            out += overpass_area(part, depth + 1)
+            out += overpass_area(part, depth + 1, what)
         return out
 
 
