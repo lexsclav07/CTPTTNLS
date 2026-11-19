@@ -46,6 +46,18 @@ jobs:
       - name: Cache-bust scripts and styles
         run: sed -i "s/?v=dev/?v=${GITHUB_SHA::7}/g" index.html
 
+      # Publish the apple-design-test branch alongside the real site at /test/,
+      # using today's shop list. Skipped once that branch is deleted.
+      - name: Add the test branch at /test/
+        run: |
+          if git fetch --depth 1 origin apple-design-test 2>/dev/null; then
+            mkdir -p test
+            git archive FETCH_HEAD | tar -x -C test
+            rm -rf test/.github test/scripts test/data/sources
+            cp data/shops.json test/data/shops.json
+            sed -i "s/?v=dev/?v=test-$(git rev-parse --short FETCH_HEAD)/g" test/index.html
+          fi
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
