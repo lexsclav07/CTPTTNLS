@@ -2,6 +2,9 @@
 
 // ---------------------------------------------------------------- settings --
 
+const ARROWS = 6;         // the nearest shop + the next 5
+const ON_TARGET_DEG = 12; // main arrow goes green when you're facing the shop
+
 // Phones report heading against magnetic north; shop bearings are against true
 // north. The gap (declination) is +12.8° in Sydney but -1.5° in Perth, so look
 // it up: WMM2025 values for 2027 on a 5° grid, lat -45..-10, lon 110..155.
@@ -18,7 +21,7 @@ const DECLINATION_GRID = [
 ];
 
 // data/shops.json covers this box (Sydney, Central Coast, Newcastle, Hunter).
-// Anywhere else, shops are looked up live from OpenStreetMap, ignoring hours.
+// Anywhere else, shops are looked up live from OpenStreetMap.
 const REGION = { s: -34.25, w: 150.4, n: -32.5, e: 152.3 };
 const OVERPASS = [
   "https://overpass-api.de/api/interpreter",
@@ -26,112 +29,26 @@ const OVERPASS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
-// Most shops don't publish hours on OpenStreetMap. For those, assume a
-// conservative "almost every bottlo is open by now" window.
-const DEFAULT_HOURS = "Mo-We 10:00-20:00; Th-Sa 10:00-21:00; Su 10:00-19:00";
-
-const ON_TARGET_DEG = 12; // arrow goes green when you're facing the shop
-
 // ------------------------------------------------------------------- state --
 
 const $ = (id) => document.getElementById(id);
-const app = $("app"), arrowEl = $("arrow"), dialEl = $("dial");
-const distEl = $("dist"), nameEl = $("name"), openBtn = $("open");
+const app = $("app"), wrap = $("wrap"), dialEl = $("dial");
+const labelEl = $("label"), distEl = $("dist"), nameEl = $("name");
+const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
 
-let shops = [];          // [{lat, lon, name, week}]
+let shops = [];          // [{lat, lon, name}]
 let here = null;         // {lat, lon}
-let target = null;       // nearest shop we're pointing at
+let targets = [];        // nearest ARROWS shops, closest first: [{shop, d}]
 let heading = null;      // degrees from true north, smoothed
 let hx = 0, hy = 0;      // heading as a unit vector, for smoothing across 359°->0°
-let arrowAngle = 0, dialAngle = 0;
+let dialAngle = 0;
+const angles = new Array(ARROWS).fill(null); // drawn angle of each arrow
 let wasOnTarget = false;
-let started = false;
 let needsTap = false;
 let locationOff = false;
-let decl = 12.8;          // magnetic declination where you are
+let decl = 12.8;         // magnetic declination where you are
 let live = null;         // {lat, lon, shops} from OpenStreetMap when outside REGION
 let nextLiveFetch = 0;   // don't hammer the free API
-let openOnly = true;
-try { openOnly = localStorage.getItem("openOnly") !== "0"; } catch {}
-
-// ---------------------------------------------------------- opening hours --
-
-const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-
-// OSM opening_hours -> 7 lists (Mon..Sun) of [startMin, endMin], where end can
-// run past 1440 for after-midnight closing. null = couldn't understand it.
-function parseHours(text) {
-  if (!text) return null;
-  text = text.trim();
-  if (text === "24/7") return DAYS.map(() => [[0, 1440]]);
-
-  // Lots of shops use "," between rules instead of ";" - normalise that.
-  text = text.replace(/(\d|off|closed)\s*,\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)\b)/gi, "$1;");
-
-  const week = DAYS.map(() => []);
-  for (const rule of text.split(/\s*;\s*/)) {
-    if (!rule) continue;
-    const m = rule.match(/^(.*?)\s*((?:\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*,?\s*)+|off|closed)$/i);
-    if (!m) return null;
-
-    let days = [], publicHoliday = false;
-    for (const part of m[1].split(",").map((s) => s.trim()).filter(Boolean)) {
-      if (part === "PH") { publicHoliday = true; continue; }
-      const r = part.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(Mo|Tu|We|Th|Fr|Sa|Su))?$/);
-      if (!r) return null; // months, dates, "week 1", sunrise... too fancy
-      const a = DAYS.indexOf(r[1]), b = DAYS.indexOf(r[2] || r[1]);
-      for (let d = a; ; d = (d + 1) % 7) { days.push(d); if (d === b) break; }
-    }
-    if (!m[1].trim()) days = [0, 1, 2, 3, 4, 5, 6];
-    if (!days.length && publicHoliday) continue; // a PH-only rule; ignore
-
-    let ranges = [];
-    if (!/off|closed/i.test(m[2])) {
-      for (const t of m[2].match(/\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}/g)) {
-        const [s, e] = t.split("-").map((x) => {
-          const [h, mm] = x.trim().split(":").map(Number);
-          return h * 60 + mm;
-        });
-        ranges.push([s, e <= s ? e + 1440 : e]);
-      }
-    }
-    for (const d of days) week[d] = ranges; // later rules override earlier ones
-  }
-  return week;
-}
-
-const DEFAULT_WEEK = parseHours(DEFAULT_HOURS);
-
-function sydneyNow() {
-  const parts = {};
-  for (const p of new Intl.DateTimeFormat("en-US", {
-    timeZone: "Australia/Sydney", year: "numeric", month: "numeric", day: "numeric",
-    weekday: "short", hour: "numeric", minute: "numeric", hourCycle: "h23",
-  }).formatToParts(new Date())) parts[p.type] = p.value;
-  return {
-    y: +parts.year, m: +parts.month, d: +parts.day,
-    day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(parts.weekday),
-    min: (+parts.hour % 24) * 60 + +parts.minute,
-  };
-}
-
-// NSW bottle shops can't trade on Good Friday or Christmas Day.
-function closedByLaw({ y, m, d }) {
-  if (m === 12 && d === 25) return true;
-  const a = y % 19, b = Math.floor(y / 100), c = y % 100;
-  const h = (19 * a + b - Math.floor(b / 4) - Math.floor((b - Math.floor((b + 8) / 25) + 1) / 3) + 15) % 30;
-  const l = (32 + 2 * (b % 4) + 2 * Math.floor(c / 4) - h - (c % 4)) % 7;
-  const mm = Math.floor((a + 11 * h + 22 * l) / 451);
-  const easter = new Date(Date.UTC(y, Math.floor((h + l - 7 * mm + 114) / 31) - 1, ((h + l - 7 * mm + 114) % 31) + 1));
-  const goodFriday = new Date(easter.getTime() - 2 * 864e5);
-  return m === goodFriday.getUTCMonth() + 1 && d === goodFriday.getUTCDate();
-}
-
-function isOpen(shop, now) {
-  const week = shop.week || DEFAULT_WEEK;
-  const inside = (ranges, min) => ranges.some(([s, e]) => min >= s && min < e);
-  return inside(week[now.day], now.min) || inside(week[(now.day + 6) % 7], now.min + 1440);
-}
 
 // ------------------------------------------------------------------ maths --
 
@@ -158,8 +75,6 @@ function formatDistance(m) {
   return `${Math.round(m / 1000)} km`;
 }
 
-// ---------------------------------------------------------------- picking --
-
 function declination(lat, lon) {
   const g = DECLINATION_GRID;
   const y = Math.min(Math.max((lat + 45) / 5, 0), g.length - 1.001);
@@ -167,6 +82,8 @@ function declination(lat, lon) {
   const i = Math.floor(y), j = Math.floor(x), fy = y - i, fx = x - j;
   return (g[i][j] * (1 - fx) + g[i][j + 1] * fx) * (1 - fy) + (g[i + 1][j] * (1 - fx) + g[i + 1][j + 1] * fx) * fy;
 }
+
+// ------------------------------------------------- shops outside the list --
 
 const inRegion = ({ lat, lon }) => lat >= REGION.s && lat <= REGION.n && lon >= REGION.w && lon <= REGION.e;
 
@@ -203,35 +120,39 @@ async function fetchNearby() {
   } finally {
     nextLiveFetch = Date.now() + 30000;
   }
-  pickTarget();
+  pickTargets();
 }
 
-function pickTarget() {
+// ---------------------------------------------------------------- picking --
+
+function pickTargets() {
   if (!here) return;
   const outside = !inRegion(here);
-  app.classList.toggle("anywhere", outside); // opening hours only work in NSW
   if (outside) {
     const moved = live && metres(here.lat, here.lon, live.lat, live.lon) > 5000;
     if ((!live || moved) && Date.now() >= nextLiveFetch) fetchNearby();
     if (!live) return;
   }
-  const list = outside ? live.shops : shops;
-  const filter = openOnly && !outside;
-  const now = sydneyNow();
-  const lawClosed = closedByLaw(now);
-  let best = null, bestD = Infinity;
-  for (const s of list) {
-    if (filter && (lawClosed || !isOpen(s, now))) continue;
-    const d = metres(here.lat, here.lon, s.lat, s.lon);
-    if (d < bestD) { bestD = d; best = s; }
+
+  // Keep the closest few without sorting the whole list.
+  const best = [];
+  for (const shop of outside ? live.shops : shops) {
+    const d = metres(here.lat, here.lon, shop.lat, shop.lon);
+    if (best.length === ARROWS && d >= best[ARROWS - 1].d) continue;
+    let i = best.length;
+    while (i > 0 && best[i - 1].d > d) i--;
+    best.splice(i, 0, { shop, d });
+    if (best.length > ARROWS) best.pop();
   }
-  target = best;
-  if (best) {
-    distEl.textContent = formatDistance(bestD);
-    nameEl.textContent = needsTap ? "Tap to start" : best.name;
+  // Arrows whose shop changed swing over from where they were.
+  targets = best;
+
+  if (best.length) {
+    distEl.textContent = needsTap ? "" : formatDistance(best[0].d);
+    nameEl.textContent = needsTap ? "Tap to start" : best[0].shop.name;
   } else {
-    distEl.textContent = "—";
-    nameEl.textContent = outside ? "None nearby" : "Nothing open";
+    distEl.textContent = "";
+    nameEl.textContent = "None nearby";
   }
 }
 
@@ -268,22 +189,40 @@ function startCompass() {
 // ---------------------------------------------------------------- drawing --
 
 function frame() {
-  // No compass (e.g. a laptop)? Draw it north-up so the arrow is still a bearing.
+  // No compass (e.g. a laptop)? Draw it north-up so the arrows are still bearings.
   const h = heading ?? 0;
   dialAngle += wrap180(-h - dialAngle) * 0.3;
   dialEl.style.transform = `rotate(${dialAngle}deg)`;
 
-  if (target && here) {
-    const want = bearing(here.lat, here.lon, target.lat, target.lon) - h;
-    arrowAngle += wrap180(want - arrowAngle) * 0.3;
-    arrowEl.style.transform = `rotate(${arrowAngle}deg)`;
-    const on = heading !== null && Math.abs(wrap180(arrowAngle)) < ON_TARGET_DEG;
-    arrowEl.classList.toggle("on", on);
-    if (on && !wasOnTarget && navigator.vibrate) navigator.vibrate(25);
-    wasOnTarget = on;
+  for (let i = 0; i < ARROWS; i++) {
+    const t = here && targets[i];
+    arrowEls[i].style.display = t ? "" : "none";
+    if (!t) { angles[i] = null; continue; }
+    const want = bearing(here.lat, here.lon, t.shop.lat, t.shop.lon) - h;
+    angles[i] = angles[i] === null ? want : angles[i] + wrap180(want - angles[i]) * 0.3;
+    arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)`);
   }
-  arrowEl.classList.toggle("none", started && !target);
+
+  const on = heading !== null && angles[0] !== null && Math.abs(wrap180(angles[0])) < ON_TARGET_DEG;
+  arrowEls[0].classList.toggle("on", on);
+  if (on && !wasOnTarget && navigator.vibrate) navigator.vibrate(25);
+  wasOnTarget = on;
+
+  placeLabel();
   requestAnimationFrame(frame);
+}
+
+// The name + distance tag hangs off the tail of the main arrow, on the far
+// side of the centre, pushed out just far enough that it never overlaps it.
+function placeLabel() {
+  let x = 0, y = 0;
+  if (angles[0] !== null) {
+    const a = rad(angles[0]), ux = Math.sin(a), uy = -Math.cos(a); // arrow direction
+    const gap = wrap.clientWidth * 0.05; // clears the hub in the middle
+    const r = (labelEl.offsetWidth / 2) * Math.abs(ux) + (labelEl.offsetHeight / 2) * Math.abs(uy) + gap;
+    x = -ux * r; y = -uy * r;
+  }
+  labelEl.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
 }
 
 // --------------------------------------------------------------- location --
@@ -295,7 +234,7 @@ function startLocation() {
     (pos) => {
       here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       decl = declination(here.lat, here.lon);
-      pickTarget();
+      pickTargets();
     },
     (err) => {
       if (err.code === err.PERMISSION_DENIED) {
@@ -310,12 +249,11 @@ function startLocation() {
 
 // ------------------------------------------------------------- wake lock ---
 
-let wakeLock = null;
 async function keepAwake() {
-  try { if (navigator.wakeLock && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen"); } catch {}
+  try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch {}
 }
 // The browser drops the lock whenever the tab is hidden; take it back on return.
-document.addEventListener("visibilitychange", () => { if (started) keepAwake(); });
+document.addEventListener("visibilitychange", keepAwake);
 
 // ------------------------------------------------------------------ start --
 
@@ -326,49 +264,34 @@ function askForCompass() {
   app.classList.remove("idle");
   try { DeviceOrientationEvent.requestPermission().catch(() => {}); } catch {}
   keepAwake();
-  if (here) pickTarget(); else nameEl.textContent = locationOff ? "Location off" : "Locating…";
+  if (here) pickTargets(); else nameEl.textContent = locationOff ? "Location off" : "Locating…";
 }
-
-function renderToggle() {
-  openBtn.setAttribute("aria-pressed", String(openOnly));
-}
-
-openBtn.addEventListener("click", (e) => {
-  if (needsTap) askForCompass();
-  e.stopPropagation();
-  openOnly = !openOnly;
-  try { localStorage.setItem("openOnly", openOnly ? "1" : "0"); } catch {}
-  renderToggle();
-  pickTarget();
-});
 
 async function load() {
   // Tick marks around the dial.
   const ticks = $("ticks");
   for (let i = 0; i < 72; i++) {
-    const a = rad(i * 5), major = i % 6 === 0, r1 = 47, r2 = major ? 42 : 44.5;
+    const a = rad(i * 5), major = i % 6 === 0, r1 = 48, r2 = major ? 43.5 : 45.5;
     const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
     l.setAttribute("x1", 50 + r1 * Math.sin(a)); l.setAttribute("y1", 50 - r1 * Math.cos(a));
     l.setAttribute("x2", 50 + r2 * Math.sin(a)); l.setAttribute("y2", 50 - r2 * Math.cos(a));
     if (major) l.setAttribute("class", "major");
-    if (i !== 0) ticks.appendChild(l); // leave room for the N
+    if (i !== 0) ticks.appendChild(l); // the N sits here
   }
-  renderToggle();
   requestAnimationFrame(frame);
 
   try {
     const res = await fetch("data/shops.json", { cache: "no-cache" });
-    shops = (await res.json()).shops.map(([lat, lon, name, hours]) => ({ lat, lon, name, week: parseHours(hours) }));
+    shops = (await res.json()).shops.map(([lat, lon, name]) => ({ lat, lon, name }));
   } catch {
     nameEl.textContent = "Couldn't load shops";
     return;
   }
 
-  started = true;
   startCompass();
   startLocation();
   keepAwake();
-  setInterval(pickTarget, 30000); // shops open and close while you walk
+  setInterval(pickTargets, 30000); // re-check for a live lookup if you've moved
 
   setTimeout(() => {
     const canAsk = typeof DeviceOrientationEvent !== "undefined" &&
@@ -376,7 +299,7 @@ async function load() {
     if (heading === null && canAsk) {
       needsTap = true;
       app.classList.add("idle");
-      if (here) pickTarget(); else if (!locationOff) nameEl.textContent = "Tap to start";
+      if (here) pickTargets(); else if (!locationOff) nameEl.textContent = "Tap to start";
       app.addEventListener("click", () => { if (needsTap) askForCompass(); });
     } else {
       app.classList.remove("idle");
