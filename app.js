@@ -56,6 +56,14 @@ let locationOff = false;
 let decl = 12.8;         // magnetic declination where you are
 let live = null;         // {lat, lon, shops} from OpenStreetMap when outside REGION
 let nextLiveFetch = 0;   // don't hammer the free API
+let pinned = null;       // a shop picked from the list, or null to follow the nearest
+let imperial = false;    // miles and feet instead of km and m
+try {
+  pinned = JSON.parse(localStorage.getItem("pinned") || "null");
+  imperial = localStorage.getItem("units") === "imperial";
+} catch {}
+const save = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
+const shopKey = (s) => `${s.lat},${s.lon}`;
 
 // ------------------------------------------------------------------ maths --
 
@@ -77,6 +85,11 @@ function bearing(aLat, aLon, bLat, bLon) {
 }
 
 function formatDistance(m) {
+  if (imperial) {
+    const mi = m / 1609.344;
+    if (mi < 0.1) return `${Math.max(10, Math.round((m * 3.28084) / 10) * 10)} ft`;
+    return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+  }
   if (m < 1000) return `${Math.max(10, Math.round(m / 10) * 10)} m`;
   if (m < 10000) return `${(m / 1000).toFixed(1)} km`;
   return `${Math.round(m / 1000)} km`;
@@ -141,9 +154,12 @@ function pickTargets() {
     if (!live) return;
   }
 
-  // Keep the closest few without sorting the whole list.
+  // Keep the closest few without sorting the whole list (skipping a picked shop,
+  // which always takes the main arrow).
+  const pinKey = pinned && shopKey(pinned);
   const best = [];
   for (const shop of outside ? live.shops : shops) {
+    if (shop === pinned || (pinKey && shopKey(shop) === pinKey)) continue;
     const d = metres(here.lat, here.lon, shop.lat, shop.lon);
     if (best.length === ARROWS && d >= best[ARROWS - 1].d) continue;
     let i = best.length;
@@ -151,7 +167,12 @@ function pickTargets() {
     best.splice(i, 0, { shop, d });
     if (best.length > ARROWS) best.pop();
   }
+  if (pinned) {
+    best.unshift({ shop: pinned, d: metres(here.lat, here.lon, pinned.lat, pinned.lon) });
+    best.length = Math.min(best.length, ARROWS);
+  }
   targets = best; // arrows whose shop changed swing over from where they were
+  $("nearest").hidden = !pinned;
 
   if (best.length) {
     distEl.textContent = needsTap ? "" : formatDistance(best[0].d);
@@ -163,7 +184,9 @@ function pickTargets() {
 
   // The next five, smaller, under the main readout.
   othersEl.replaceChildren(...best.slice(1).map(({ shop, d }, i) => {
-    const li = document.createElement("li");
+    const li = document.createElement("li"), btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.slot = i + 1;
     const k = document.createElement("span"), row = document.createElement("span");
     const n = document.createElement("span"), m = document.createElement("span");
     k.className = "i"; k.textContent = i + 1; // same number as its arrow
@@ -171,7 +194,8 @@ function pickTargets() {
     n.className = "n"; n.textContent = shop.name;
     m.className = "d"; m.textContent = formatDistance(d);
     row.append(n, m);
-    li.append(k, row);
+    btn.append(k, row);
+    li.append(btn);
     return li;
   }));
 }
@@ -236,7 +260,7 @@ function status(text) {
 
 // Cross-fade the name when the nearest shop changes.
 function showShop(shop) {
-  if (shop === shownShop) return;
+  if (shownShop && shopKey(shop) === shopKey(shownShop)) return;
   const first = shownShop === null;
   shownShop = shop;
   nameEl.classList.remove("status");
@@ -447,6 +471,32 @@ async function load() {
   startLocation();
   keepAwake();
   setInterval(pickTargets, 30000); // re-check for a live lookup if you've moved
+
+  // Tap a shop in the list to point the main arrow at it.
+  othersEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-slot]");
+    const t = btn && targets[+btn.dataset.slot];
+    if (!t) return;
+    pinned = { lat: t.shop.lat, lon: t.shop.lon, name: t.shop.name };
+    save("pinned", JSON.stringify(pinned));
+    pickTargets();
+  });
+  $("nearest").addEventListener("click", () => {
+    pinned = null;
+    save("pinned", "null");
+    pickTargets();
+  });
+
+  // km / mi
+  const unitBtns = document.querySelectorAll(".units button");
+  const showUnits = () => unitBtns.forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.units === "imperial") === imperial)));
+  unitBtns.forEach((b) => b.addEventListener("click", () => {
+    imperial = b.dataset.units === "imperial";
+    save("units", imperial ? "imperial" : "metric");
+    showUnits();
+    pickTargets();
+  }));
+  showUnits();
 
   setTimeout(() => {
     const canAsk = typeof DeviceOrientationEvent !== "undefined" &&

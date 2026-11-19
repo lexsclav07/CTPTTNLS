@@ -17,6 +17,11 @@ full-screen like an app.
   yellow and orange to red when it's behind you.
 - Every arrow shows the shop's compass bearing (degrees from true north). The
   faint arrows are numbered to match the list.
+- Tap a shop in the list to point the main arrow at it instead. **‹ Nearest**
+  (top left) goes back to the closest shop.
+- **km / mi** (top right) switches between metric and imperial distances.
+- The look follows Apple's Human Interface Guidelines: iOS system colours,
+  Light/Dark Mode, Dynamic Type, spring animations and Reduce Motion support.
 
 ## How it works
 
