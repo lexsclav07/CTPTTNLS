@@ -79,6 +79,7 @@ main {
 }
 .lbl .k { font-size: 4px; font-weight: 700; fill: var(--fg); fill-opacity: 0.85; }
 .lbl .b { font-size: 3.6px; font-weight: 500; fill: var(--fg); fill-opacity: 0.6; font-variant-numeric: tabular-nums; }
+.main-lbl .k { font-size: 3.6px; }
 .main-lbl .b { font-size: 4.4px; font-weight: 700; fill: var(--amber); fill-opacity: 1; }
 
 .idle .arrows .main { fill: var(--faint); }

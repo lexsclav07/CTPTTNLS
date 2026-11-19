@@ -37,6 +37,7 @@ const distEl = $("dist"), nameEl = $("name"), othersEl = $("others");
 const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
 const labelEls = [0, 1, 2, 3, 4, 5].map((i) => $("l" + i));
 const bearingEls = labelEls.map((g) => g.querySelector(".b"));
+const numEls = labelEls.map((g) => g.querySelector(".k"));
 
 let shops = [];          // [{lat, lon, name}]
 let here = null;         // {lat, lon}
@@ -47,6 +48,8 @@ let dialAngle = 0;
 const angles = new Array(ARROWS).fill(null); // drawn angle of each arrow
 const LABEL_EDGE = 43;   // labels stay inside the tick ring (SVG units; arrows reach 32)
 const labelW = new Array(ARROWS).fill(0); // measured label widths
+const bearings = new Array(ARROWS).fill(0); // true bearing to each shop, whole degrees
+const GROUP_DEG = 9;     // arrows closer together than this share one label
 let wasOnTarget = false;
 let needsTap = false;
 let locationOff = false;
@@ -210,17 +213,13 @@ function frame() {
 
   for (let i = 0; i < ARROWS; i++) {
     const t = here && targets[i];
-    arrowEls[i].style.display = labelEls[i].style.display = t ? "" : "none";
+    arrowEls[i].style.display = t ? "" : "none";
     if (!t) { angles[i] = null; continue; }
     const b = bearing(here.lat, here.lon, t.shop.lat, t.shop.lon);
     const want = b - h;
     angles[i] = angles[i] === null ? want : angles[i] + wrap180(want - angles[i]) * 0.3;
     arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)`);
-    const text = `${Math.round(b) % 360}°`;
-    if (bearingEls[i].textContent !== text) {
-      bearingEls[i].textContent = text;
-      labelW[i] = Math.max(bearingEls[i].getComputedTextLength(), 2.6) + 1.4; // + halo
-    }
+    bearings[i] = Math.round(b) % 360;
   }
 
   placeLabels();
@@ -240,26 +239,48 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-// Each arrow's label (bearing, plus the list number on faint ones) sits just
-// past its tip, inside the tick ring. The main one goes first. A faint one that
-// would overlap another slides around the dial, then tries an inner ring
-// (over faint arrows, never over the main one).
+// Labels: bearing near each arrow's tip, plus list numbers on the faint ones.
+// Shops in (almost) the same direction - common at shopping centres - share
+// one label like "3 4 5 / 340°"; ones hiding under the main arrow put their
+// numbers on its label. Labels stay inside the tick ring, off the main arrow
+// and the N, and slide around the dial (keeping the arrows' order) if crowded.
+function setLabel(i, nums, deg) {
+  labelEls[i].style.display = "";
+  const b = `${deg}°`;
+  if (numEls[i].textContent === nums && bearingEls[i].textContent === b && labelW[i]) return;
+  numEls[i].textContent = nums;
+  bearingEls[i].textContent = b;
+  if (i === 0) bearingEls[0].setAttribute("y", nums ? -2.2 : 0);
+  labelW[i] = Math.max(bearingEls[i].getComputedTextLength(),
+    nums ? numEls[i].getComputedTextLength() : 0, 2.6) + 1.4; // + halo
+}
+
 function placeLabels() {
-  const boxes = [];
+  for (const g of labelEls) g.style.display = "none";
+  if (angles[0] === null) return;
+
+  const near = (i, j) => Math.abs(wrap180(angles[i] - angles[j])) < GROUP_DEG;
+  const faint = [1, 2, 3, 4, 5].filter((i) => angles[i] !== null);
+  const underMain = faint.filter((i) => near(i, 0));
+  const groups = [];
+  for (const i of faint.filter((i) => !near(i, 0))
+    .sort((a, b) => ((angles[a] - angles[0] + 720) % 360) - ((angles[b] - angles[0] + 720) % 360))) {
+    const g = groups[groups.length - 1];
+    if (g && near(i, g[0])) g.push(i); else groups.push([i]);
+  }
+
+  const n = rad(dialAngle); // the N on the dial counts as taken
+  const boxes = [{ x: 50 + 44.5 * Math.sin(n), y: 50 - 44.5 * Math.cos(n), w: 4.8, h: 5 }];
   const fits = (box) => !boxes.some((o) => Math.abs(o.x - box.x) < (o.w + box.w) / 2 + 0.5 &&
                                            Math.abs(o.y - box.y) < (o.h + box.h) / 2 + 0.5);
-  // Main first, then the faint ones in the order they sit around the dial, each
-  // nudged clockwise past its neighbour first, so the labels keep the arrows' order.
-  const order = [1, 2, 3, 4, 5].filter((i) => angles[i] !== null)
-    .sort((a, b) => ((angles[a] - angles[0] + 720) % 360) - ((angles[b] - angles[0] + 720) % 360));
-  for (const i of angles[0] === null ? order : [0, ...order]) {
-    const w = labelW[i], h = i === 0 ? 5 : 8.6;
+  const place = (i, angle, h, offsets) => {
+    const w = labelW[i];
     let pick = null;
     search:
     for (const edge of i === 0 ? [LABEL_EDGE] : [LABEL_EDGE, LABEL_EDGE - 10]) {
-      for (const off of i === 0 ? [0] : [0, 8, 16, 24, 32, -8, -16, -24, -32]) {
-        if (edge < LABEL_EDGE && Math.abs(wrap180(angles[i] + off - angles[0])) < 25) continue;
-        const a = rad(angles[i] + off), ux = Math.sin(a), uy = -Math.cos(a);
+      for (const off of offsets) {
+        if (edge < LABEL_EDGE && Math.abs(wrap180(angle + off - angles[0])) < 25) continue;
+        const a = rad(angle + off), ux = Math.sin(a), uy = -Math.cos(a);
         const reach = (w / 2) * Math.abs(ux) + (h / 2) * Math.abs(uy); // centre to edge, along the arrow
         // Outer ring: clear of the arrow tips (r 32) even if it nudges the ticks.
         const r = edge === LABEL_EDGE ? Math.max(edge - reach, 33.5 + reach) : edge - reach;
@@ -270,6 +291,15 @@ function placeLabels() {
     }
     boxes.push(pick);
     labelEls[i].setAttribute("transform", `translate(${pick.x.toFixed(2)} ${pick.y.toFixed(2)})`);
+  };
+
+  setLabel(0, underMain.join(" "), bearings[0]);
+  place(0, angles[0], underMain.length ? 9.4 : 5, [0, 7, -7]);
+  for (const g of groups) {
+    const lead = Math.min(...g);
+    const mid = angles[g[0]] + wrap180(angles[g[g.length - 1]] - angles[g[0]]) / 2;
+    setLabel(lead, [...g].sort((a, b) => a - b).join(" "), bearings[lead]);
+    place(lead, mid, 8.6, [0, 8, 16, 24, 32, -8, -16, -24, -32]);
   }
 }
 
