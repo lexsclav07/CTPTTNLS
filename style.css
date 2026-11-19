@@ -225,10 +225,12 @@ main {
 
 .dial-wrap {
   position: relative;
-  overflow: hidden; /* the dial is a square that rotates; keep its corners from widening the page */
-  border-radius: 50%;
+  /* The dial is a square that rotates; keep its corners from widening the
+     page. A plain rectangular clip: a rounded one costs Safari a mask pass. */
+  overflow: hidden;
   width: min(100%, 37vh, 400px);
   aspect-ratio: 1;
+  --u: 3.6px;                  /* 1% of the dial, set from app.js; sizes the labels */
 }
 
 .dial, .arrows {
@@ -250,24 +252,47 @@ main {
   font-family: inherit;
 }
 
-.arrows .other { fill: var(--faint-arrow); }
-.arrows .main { fill: var(--accent); } /* coloured by heading from app.js */
-.arrows .hub { fill: var(--label); }
-.idle .arrows .main { fill: var(--fill); }
-
-.lbl text {
-  font-family: inherit;
-  text-anchor: middle;
-  dominant-baseline: central;
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 1.3px;
-  stroke-linejoin: round;
+/* Arrow layers: 20% x 33% of the dial, pivoting on the dial's centre. */
+.arrow {
+  position: absolute;
+  left: 40%;
+  top: 17%;
+  width: 20%;
+  height: 33%;
+  overflow: visible;
+  transform-origin: 50% 100%;
+  will-change: transform;
 }
-.lbl .k { font-size: 4px; font-weight: 600; fill: var(--label); }
-.lbl .b { font-size: 3.6px; font-weight: 400; fill: var(--label-2); font-variant-numeric: tabular-nums; }
-.main-lbl .k { font-size: 3.6px; }
-.main-lbl .b { font-size: 4.4px; font-weight: 600; fill: var(--accent); }
+.arrow.other path { fill: var(--faint-arrow); }
+.arrow.main > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.arrow.main .base path { fill: var(--accent); }   /* before the compass wakes up */
+.idle .arrow.main .base path { fill: var(--fill); }
+.arrow.main .tint { opacity: 0; will-change: opacity; }
+.t0 path { fill: var(--green); }
+.t1 path { fill: var(--yellow); }
+.t2 path { fill: var(--orange); }
+.t3 path { fill: var(--red); }
+.hub { position: absolute; left: 46%; top: 46%; width: 8%; height: 8%; fill: var(--label); }
+
+/* Labels: HTML text drawn once, then only moved. Sized in dial units. */
+.lbl {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  line-height: 1.08;
+  will-change: transform;
+  /* a halo in the background colour, so labels stay readable over ticks */
+  text-shadow: 0 0 calc(var(--u) * 0.4) var(--bg), 0 0 calc(var(--u) * 0.8) var(--bg), 0 0 calc(var(--u) * 1.2) var(--bg);
+}
+.lbl .k { font-size: calc(var(--u) * 4); font-weight: 600; color: var(--label); }
+.lbl .b { font-size: calc(var(--u) * 3.6); font-weight: 400; color: var(--label-2); font-variant-numeric: tabular-nums; }
+.main-lbl .k { font-size: calc(var(--u) * 3.6); }
+.main-lbl .b { font-size: calc(var(--u) * 4.4); font-weight: 600; color: var(--accent); }
+.lbl span:empty { display: none; }
 
 /* ---------- readout ---------- */
 
@@ -444,7 +469,7 @@ main.landscape .sensors { display: block; }
 /* ---------- watermark ---------- */
 
 .credit {
-  margin-top: 12px;
+  margin-top: 6px;
   text-align: center;
   font-size: 0.65rem;          /* Caption 2, 11 pt */
   color: var(--label-3);       /* tertiary label: there, but quiet */

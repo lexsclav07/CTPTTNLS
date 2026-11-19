@@ -76,24 +76,36 @@
           <text x="50" y="6" class="north">N</text>
         </svg>
 
-        <svg class="arrows" viewBox="0 0 100 100" aria-hidden="true">
-          <!-- next 5 closest: faint, drawn first so the main arrow sits on top -->
-          <path id="a5" class="other" d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/>
-          <path id="a4" class="other" d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/>
-          <path id="a3" class="other" d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/>
-          <path id="a2" class="other" d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/>
-          <path id="a1" class="other" d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/>
-          <!-- their number (matching the list) and compass bearing -->
-          <g id="l1" class="lbl"><text class="k" y="-2.1">1</text><text class="b" y="2.2"></text></g>
-          <g id="l2" class="lbl"><text class="k" y="-2.1">2</text><text class="b" y="2.2"></text></g>
-          <g id="l3" class="lbl"><text class="k" y="-2.1">3</text><text class="b" y="2.2"></text></g>
-          <g id="l4" class="lbl"><text class="k" y="-2.1">4</text><text class="b" y="2.2"></text></g>
-          <g id="l5" class="lbl"><text class="k" y="-2.1">5</text><text class="b" y="2.2"></text></g>
-          <!-- nearest shop, with its bearing -->
-          <path id="a0" class="main" d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/>
-          <circle class="hub" cx="50" cy="50" r="3.6"/>
-          <g id="l0" class="lbl main-lbl"><text class="b"></text><text class="k" y="2.6"></text></g>
-        </svg>
+        <!-- Each arrow and label is its own small layer that the GPU just rotates
+             or slides, so turning the phone never redraws anything. The arrow
+             boxes sit with their bottom-centre on the middle of the dial. -->
+        <div class="arrows" aria-hidden="true">
+          <!-- next 5 closest: faint, under the main arrow -->
+          <svg id="a5" class="arrow other" viewBox="40 17 20 33"><path d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/></svg>
+          <svg id="a4" class="arrow other" viewBox="40 17 20 33"><path d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/></svg>
+          <svg id="a3" class="arrow other" viewBox="40 17 20 33"><path d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/></svg>
+          <svg id="a2" class="arrow other" viewBox="40 17 20 33"><path d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/></svg>
+          <svg id="a1" class="arrow other" viewBox="40 17 20 33"><path d="M50 19 L55 29 L51.2 27.6 L51.2 42 L48.8 42 L48.8 27.6 L45 29 Z"/></svg>
+          <!-- nearest shop -->
+          <!-- The colour fades green > yellow > orange > red by cross-fading four
+               ready-coloured copies (opacity is free for the GPU; recolouring
+               one arrow would redraw it every frame). -->
+          <div id="a0" class="arrow main">
+            <svg class="base" viewBox="40 17 20 33"><path d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/></svg>
+            <svg class="tint t0" viewBox="40 17 20 33"><path d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/></svg>
+            <svg class="tint t1" viewBox="40 17 20 33"><path d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/></svg>
+            <svg class="tint t2" viewBox="40 17 20 33"><path d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/></svg>
+            <svg class="tint t3" viewBox="40 17 20 33"><path d="M50 18 L59 34 L52.6 31.6 L52.6 50 L47.4 50 L47.4 31.6 L41 34 Z"/></svg>
+          </div>
+          <svg class="hub" viewBox="46 46 8 8"><circle cx="50" cy="50" r="3.6"/></svg>
+          <!-- bearings, plus list numbers on the faint ones -->
+          <div id="l1" class="lbl"><span class="k">1</span><span class="b"></span></div>
+          <div id="l2" class="lbl"><span class="k">2</span><span class="b"></span></div>
+          <div id="l3" class="lbl"><span class="k">3</span><span class="b"></span></div>
+          <div id="l4" class="lbl"><span class="k">4</span><span class="b"></span></div>
+          <div id="l5" class="lbl"><span class="k">5</span><span class="b"></span></div>
+          <div id="l0" class="lbl main-lbl"><span class="b"></span><span class="k"></span></div>
+        </div>
       </div>
 
       <!-- Portrait: these just stack under the compass. Landscape: a column on the right. -->

@@ -39,6 +39,8 @@ const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
 const labelEls = [0, 1, 2, 3, 4, 5].map((i) => $("l" + i));
 const bearingEls = labelEls.map((g) => g.querySelector(".b"));
 const numEls = labelEls.map((g) => g.querySelector(".k"));
+const mainBase = arrowEls[0].querySelector(".base");
+const mainTints = [...arrowEls[0].querySelectorAll(".tint")];
 
 let shops = [];          // [{lat, lon, name, kind}] - kind: s bottle shop, p pub, b bar, c club
 let here = null;         // {lat, lon}
@@ -161,17 +163,23 @@ function pickTargets() {
 
   // Keep the closest few without sorting the whole list (skipping a picked shop,
   // which always takes the main arrow).
-  const pinKey = pinned && shopKey(pinned);
+  // Ranking ~3,500 places twice a second: a flat-earth distance (no trig per
+  // place) is plenty to sort them; the winners get the exact distance below.
   const best = [];
+  const kx = Math.cos(rad(here.lat)), hl = here.lat, hn = here.lon;
   for (const shop of outside ? live.shops : shops) {
-    if (!kinds.has(shop.kind) || shop === pinned || (pinKey && shopKey(shop) === pinKey)) continue;
-    const d = metres(here.lat, here.lon, shop.lat, shop.lon);
+    if (!kinds.has(shop.kind) || shop === pinned ||
+        (pinned && shop.lat === pinned.lat && shop.lon === pinned.lon)) continue;
+    const dx = (shop.lon - hn) * kx, dy = shop.lat - hl;
+    const d = dx * dx + dy * dy;
     if (best.length === ARROWS && d >= best[ARROWS - 1].d) continue;
     let i = best.length;
     while (i > 0 && best[i - 1].d > d) i--;
     best.splice(i, 0, { shop, d });
     if (best.length > ARROWS) best.pop();
   }
+  for (const b of best) b.d = metres(hl, hn, b.shop.lat, b.shop.lon);
+  best.sort((a, b) => a.d - b.d);
   if (pinned) {
     best.unshift({ shop: pinned, d: metres(here.lat, here.lon, pinned.lat, pinned.lon) });
     best.length = Math.min(best.length, ARROWS);
@@ -249,7 +257,7 @@ function onOrientation(e) {
   raw.mag = ((mag % 360) + 360) % 360;
   onHeading(mag);
 }
-window.addEventListener("devicemotion", (e) => { raw.motion = e; raw.motionCount++; });
+const onMotion = (e) => { raw.motion = e; raw.motionCount++; }; // only listened to in landscape
 
 function startCompass() {
   if ("ondeviceorientationabsolute" in window) {
@@ -335,6 +343,23 @@ for (const q of ["(prefers-color-scheme: dark)", "(prefers-contrast: more)"]) {
 
 // ---------------------------------------------------------------- drawing --
 
+// Only touch the DOM when a value really changes: every write makes Safari
+// redo style work, and display/colour writes can force a redraw.
+function setTransform(el, v) { if (el._tf !== v) { el._tf = v; el.style.transform = v; } }
+function show(el, on) { if (el._on !== on) { el._on = on; el.style.display = on ? "" : "none"; } }
+function setColour(el, prop, v) { if (el._c !== v) { el._c = v; el.style[prop] = v; } }
+function setOpacity(el, v) { if (el._o !== v) { el._o = v; el.style.opacity = v; } }
+
+// px per dial unit (the dial is 100 units across); labels are sized from it.
+let u = 3.6;
+function measureDial() {
+  const w = $("wrap").clientWidth;
+  if (!w || Math.abs(w / 100 - u) < 0.005) return;
+  u = w / 100;
+  $("wrap").style.setProperty("--u", `${u}px`);
+  labelW.fill(0); // font sizes changed: measure the labels again
+}
+
 function frame(now) {
   const dt = Math.min((now - (lastFrame || now)) / 1000, 0.1);
   lastFrame = now;
@@ -343,18 +368,18 @@ function frame(now) {
   // No compass (e.g. a laptop)? Draw it north-up so the arrows are still bearings.
   const h = heading ?? 0;
   [dialAngle, dialVel] = spring(dialAngle, dialVel, dialAngle + wrap180(-h - dialAngle), dt, turn);
-  dialEl.style.transform = `rotate(${dialAngle}deg)`;
+  setTransform(dialEl, `rotate(${dialAngle.toFixed(2)}deg)`);
 
   for (let i = 0; i < ARROWS; i++) {
     const t = here && targets[i];
-    arrowEls[i].style.display = t ? "" : "none";
+    show(arrowEls[i], !!t);
     if (!t) { angles[i] = null; continue; }
     const b = bearing(here.lat, here.lon, t.shop.lat, t.shop.lon);
     const want = b - h;
     if (angles[i] === null) { angles[i] = want; vel[i] = 0; }
     [angles[i], vel[i]] = spring(angles[i], vel[i], angles[i] + wrap180(want - angles[i]), dt, turn);
-    const scale = i === 0 && pop !== 1 ? ` translate(50 50) scale(${pop.toFixed(4)}) translate(-50 -50)` : "";
-    arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)${scale}`);
+    const scale = i === 0 && pop !== 1 ? ` scale(${pop.toFixed(4)})` : "";
+    setTransform(arrowEls[i], `rotate(${angles[i].toFixed(2)}deg)${scale}`);
     bearings[i] = Math.round(b) % 360;
   }
 
@@ -365,9 +390,12 @@ function frame(now) {
   // to red when it's behind you.
   const facing = heading !== null && angles[0] !== null;
   const off = facing ? Math.abs(wrap180(angles[0])) : 0;
-  const colour = facing ? arrowColour(off) : "";
-  arrowEls[0].style.fill = colour;
-  bearingEls[0].style.fill = colour;
+  // Arrow: show colour stop i, fade stop i+1 in over it (green, yellow, orange, red at 0/60/120/180°).
+  const x = facing ? (Math.min(off, 180) / 60) : 0, seg = Math.min(Math.floor(x), 2), f = x - seg;
+  setOpacity(mainBase, facing ? "0" : "1");
+  mainTints.forEach((el, i) => setOpacity(el, !facing ? "0" : i === seg ? "1" : i === seg + 1 ? f.toFixed(3) : "0"));
+  // Label: same colours, but only re-coloured every 5° (text has to be redrawn to change colour).
+  setColour(bearingEls[0], "color", facing ? arrowColour(Math.round(off / 5) * 5) : "");
 
   const on = facing && off < ON_TARGET_DEG;
   if (on && !wasOnTarget) {
@@ -375,74 +403,79 @@ function frame(now) {
     if (!reduceMotion.matches) popVel += 1.1; // a small "got it" pop
   }
   wasOnTarget = on;
-  [pop, popVel] = spring(pop, popVel, 1, dt, POP);
-  if (Math.abs(pop - 1) < 1e-4 && Math.abs(popVel) < 1e-3) { pop = 1; popVel = 0; }
+  if (pop !== 1 || popVel !== 0) {
+    [pop, popVel] = spring(pop, popVel, 1, dt, POP);
+    if (Math.abs(pop - 1) < 1e-4 && Math.abs(popVel) < 1e-3) { pop = 1; popVel = 0; }
+  }
 
   requestAnimationFrame(frame);
 }
 
 // Labels: bearing near each arrow's tip, plus list numbers on the faint ones.
-// Shops in (almost) the same direction - common at shopping centres - share
-// one label like "3 4 5 / 340°"; ones hiding under the main arrow put their
-// numbers on its label. Labels stay inside the tick ring, off the main arrow
-// and the N, and slide around the dial (keeping the arrows' order) if crowded.
+// Text only changes when you move; measuring happens then, not every frame.
+const labelPx = labelEls.map(() => [0, 0]);
+const labelH = new Array(ARROWS).fill(0);
 function setLabel(i, nums, deg) {
-  labelEls[i].style.display = "";
+  show(labelEls[i], true);
   const b = `${deg}°`;
   if (numEls[i].textContent === nums && bearingEls[i].textContent === b && labelW[i]) return;
   numEls[i].textContent = nums;
   bearingEls[i].textContent = b;
-  if (i === 0) bearingEls[0].setAttribute("y", nums ? -2.2 : 0);
-  labelW[i] = Math.max(bearingEls[i].getComputedTextLength(),
-    nums ? numEls[i].getComputedTextLength() : 0, 2.6) + 1.4; // + halo
+  const w = labelEls[i].offsetWidth, hgt = labelEls[i].offsetHeight;
+  labelPx[i] = [w, hgt];
+  labelW[i] = w / u + 1;     // + halo, in dial units
+  labelH[i] = hgt / u + 0.4;
 }
 
 function placeLabels() {
-  for (const g of labelEls) g.style.display = "none";
-  if (angles[0] === null) return;
-
-  const near = (i, j) => Math.abs(wrap180(angles[i] - angles[j])) < GROUP_DEG;
-  const faint = [1, 2, 3, 4, 5].filter((i) => angles[i] !== null);
-  const underMain = faint.filter((i) => near(i, 0));
-  const groups = [];
-  for (const i of faint.filter((i) => !near(i, 0))
-    .sort((a, b) => ((angles[a] - angles[0] + 720) % 360) - ((angles[b] - angles[0] + 720) % 360))) {
-    const g = groups[groups.length - 1];
-    if (g && near(i, g[0])) g.push(i); else groups.push([i]);
-  }
-
-  const n = rad(dialAngle); // the N on the dial counts as taken
-  const boxes = [{ x: 50 + 45.75 * Math.sin(n), y: 50 - 45.75 * Math.cos(n), w: 4.4, h: 4.4 }];
-  const fits = (box) => !boxes.some((o) => Math.abs(o.x - box.x) < (o.w + box.w) / 2 + 0.5 &&
-                                           Math.abs(o.y - box.y) < (o.h + box.h) / 2 + 0.5);
-  const place = (i, angle, h, offsets) => {
-    const w = labelW[i];
-    let pick = null;
-    search:
-    for (const edge of i === 0 ? [LABEL_EDGE] : [LABEL_EDGE, LABEL_EDGE - 10]) {
-      for (const off of offsets) {
-        if (edge < LABEL_EDGE && Math.abs(wrap180(angle + off - angles[0])) < 25) continue;
-        const a = rad(angle + off), ux = Math.sin(a), uy = -Math.cos(a);
-        const reach = (w / 2) * Math.abs(ux) + (h / 2) * Math.abs(uy); // centre to edge, along the arrow
-        // Outer ring: clear of the arrow tips (r 32) even if it nudges the ticks.
-        const r = edge === LABEL_EDGE ? Math.max(edge - reach, 33.5 + reach) : edge - reach;
-        const box = { x: 50 + r * ux, y: 50 + r * uy, w, h };
-        if (!pick) pick = box;
-        if (fits(box)) { pick = box; break search; }
-      }
+  const wanted = [false, false, false, false, false, false];
+  if (angles[0] !== null) {
+    const near = (i, j) => Math.abs(wrap180(angles[i] - angles[j])) < GROUP_DEG;
+    const faint = [1, 2, 3, 4, 5].filter((i) => angles[i] !== null);
+    const underMain = faint.filter((i) => near(i, 0));
+    const groups = [];
+    for (const i of faint.filter((i) => !near(i, 0))
+      .sort((a, b) => ((angles[a] - angles[0] + 720) % 360) - ((angles[b] - angles[0] + 720) % 360))) {
+      const g = groups[groups.length - 1];
+      if (g && near(i, g[0])) g.push(i); else groups.push([i]);
     }
-    boxes.push(pick);
-    labelEls[i].setAttribute("transform", `translate(${pick.x.toFixed(2)} ${pick.y.toFixed(2)})`);
-  };
 
-  setLabel(0, underMain.join(" "), bearings[0]);
-  place(0, angles[0], underMain.length ? 9.4 : 5, [0, 7, -7]);
-  for (const g of groups) {
-    const lead = Math.min(...g);
-    const mid = angles[g[0]] + wrap180(angles[g[g.length - 1]] - angles[g[0]]) / 2;
-    setLabel(lead, [...g].sort((a, b) => a - b).join(" "), bearings[lead]);
-    place(lead, mid, 8.6, [0, 8, 16, 24, 32, -8, -16, -24, -32]);
+    const n = rad(dialAngle); // the N on the dial counts as taken
+    const boxes = [{ x: 50 + 45.75 * Math.sin(n), y: 50 - 45.75 * Math.cos(n), w: 4.4, h: 4.4 }];
+    const fits = (box) => !boxes.some((o) => Math.abs(o.x - box.x) < (o.w + box.w) / 2 + 0.5 &&
+                                             Math.abs(o.y - box.y) < (o.h + box.h) / 2 + 0.5);
+    const place = (i, angle, offsets) => {
+      const w = labelW[i], h = labelH[i];
+      let pick = null;
+      search:
+      for (const edge of i === 0 ? [LABEL_EDGE] : [LABEL_EDGE, LABEL_EDGE - 10]) {
+        for (const off of offsets) {
+          if (edge < LABEL_EDGE && Math.abs(wrap180(angle + off - angles[0])) < 25) continue;
+          const a = rad(angle + off), ux = Math.sin(a), uy = -Math.cos(a);
+          const reach = (w / 2) * Math.abs(ux) + (h / 2) * Math.abs(uy); // centre to edge, along the arrow
+          // Outer ring: clear of the arrow tips (r 32) even if it nudges the ticks.
+          const r = edge === LABEL_EDGE ? Math.max(edge - reach, 33.5 + reach) : edge - reach;
+          const box = { x: 50 + r * ux, y: 50 + r * uy, w, h };
+          if (!pick) pick = box;
+          if (fits(box)) { pick = box; break search; }
+        }
+      }
+      boxes.push(pick);
+      wanted[i] = true;
+      const [pw, ph] = labelPx[i];
+      setTransform(labelEls[i], `translate3d(${(pick.x * u - pw / 2).toFixed(1)}px, ${(pick.y * u - ph / 2).toFixed(1)}px, 0)`);
+    };
+
+    setLabel(0, underMain.join(" "), bearings[0]);
+    place(0, angles[0], [0, 7, -7]);
+    for (const g of groups) {
+      const lead = Math.min(...g);
+      const mid = angles[g[0]] + wrap180(angles[g[g.length - 1]] - angles[g[0]]) / 2;
+      setLabel(lead, [...g].sort((a, b) => a - b).join(" "), bearings[lead]);
+      place(lead, mid, [0, 8, 16, 24, 32, -8, -16, -24, -32]);
+    }
   }
+  for (let i = 0; i < ARROWS; i++) if (!wanted[i]) show(labelEls[i], false);
 }
 
 // --------------------------------------------------------------- location --
@@ -476,7 +509,7 @@ function startLocation() {
   // has a genuinely new fix - usually about once a second.
   let asking = false;
   setInterval(() => {
-    if (asking || locationOff || document.hidden) return;
+    if (asking || locationOff || document.hidden || performance.now() - (raw.posAt || 0) < UPDATE_MS) return;
     asking = true;
     navigator.geolocation.getCurrentPosition(
       (pos) => { asking = false; onPosition(pos); },
@@ -509,7 +542,7 @@ function applyLayout(animate) {
   const before = els.map((el) => el.getBoundingClientRect());
   isLandscape = want;
   app.classList.toggle("landscape", want);
-  if (want) renderSensors();
+  if (want) { renderSensors(); addEventListener("devicemotion", onMotion); } else removeEventListener("devicemotion", onMotion);
   if (!animate || !app.animate) return;
 
   if (reduceMotion.matches) {
@@ -614,7 +647,7 @@ function renderSensors() {
         const r = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd");
         r.className = "r"; dt.textContent = label;
         r.append(dt, dd); dl.append(r);
-        sensorRows.push([dd, get]);
+        sensorRows.push([dd, get, r]);
       }
       box.append(h, dl);
     }
@@ -623,13 +656,21 @@ function renderSensors() {
     note.textContent = "Headings are degrees clockwise from north. Some sensors only exist on some phones.";
     box.append(note);
     startExtraSensors();
+    // Only rows you can see get updated (the column scrolls).
+    if (window.IntersectionObserver) {
+      const io = new IntersectionObserver((entries) => {
+        for (const e of entries) e.target._seen = e.isIntersecting;
+      }, { root: $("side") });
+      for (const [, , r] of sensorRows) { r._seen = true; io.observe(r); }
+    }
   }
 }
 
 // Called from frame(), so the panel moves as smoothly as the compass. Only
 // values that actually changed are written.
 function updateSensors() {
-  for (const [dd, get] of sensorRows) {
+  for (const [dd, get, r] of sensorRows) {
+    if (r._seen === false) continue;
     let v; try { v = get(); } catch { v = "—"; }
     if (dd.textContent !== v) dd.textContent = v;
   }
@@ -678,6 +719,9 @@ async function load() {
   }
   readPalette();
   applyLayout(false);
+  measureDial();
+  if (window.ResizeObserver) new ResizeObserver(measureDial).observe($("wrap"));
+  else addEventListener("resize", measureDial);
   requestAnimationFrame(frame);
 
   try {
