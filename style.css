@@ -23,6 +23,7 @@
   --tint: #007aff;                            /* systemBlue: buttons */
   --highlight: #d1d1d6;                       /* systemGray4: pressed row */
   --segment: #ffffff;                         /* selected segment */
+  --menu-bg: rgba(242, 242, 247, 0.82);       /* thick material */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +45,7 @@
     --tint: #0a84ff;
     --highlight: #3a3a3c;
     --segment: #636366;
+    --menu-bg: rgba(44, 44, 46, 0.82);
   }
 }
 
@@ -100,6 +102,8 @@ main {
   display: flex;
   align-items: center;
   min-height: 44px;
+  position: relative;
+  z-index: 20; /* keeps its pull-down menu above the compass */
 }
 .bar button { font: inherit; -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
@@ -118,9 +122,71 @@ main {
 .back svg { width: 0.7rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .back:active { opacity: 0.4; }
 
+/* Filter button + iOS-style pull-down menu with checkmarks */
+.filter { position: relative; margin-left: auto; margin-right: 4px; }
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--tint);
+}
+.icon-btn svg { width: 1.45rem; height: 1.45rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.icon-btn.active svg circle { fill: currentColor; }      /* filled = some places hidden */
+.icon-btn.active svg path { stroke: var(--bg); }
+.icon-btn:active { opacity: 0.4; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: -4px;
+  z-index: 10;
+  width: 15.5rem;
+  overflow: hidden;
+  border-radius: 13px;
+  background: var(--menu-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+  transform-origin: top right;
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+  visibility: hidden;
+  transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.25, 1.05), opacity 0.2s, visibility 0s 0.4s;
+}
+.menu.open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition-delay: 0s; }
+.menu button {
+  display: grid;
+  grid-template-columns: 1.4rem 1fr 1.4rem;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-bottom: 0.5px solid var(--separator);
+  background: none;
+  color: var(--label);
+  font-size: 1rem;
+  text-align: left;
+}
+.menu button:last-child { border-bottom: 0; }
+.menu button:active { background: var(--fill); }
+.menu .check { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.menu [aria-checked="false"] .check { visibility: hidden; }
+.menu .kind { width: 1.3rem; height: 1.3rem; }
+
+/* category icons: outlines, except the club suit which is solid */
+.kind { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.kind .fill, #k-c * { fill: currentColor; stroke: none; }
+.name .kind { width: 1.05em; height: 1.05em; margin-right: 0.3em; vertical-align: -0.12em; color: var(--label-2); }
+.others .kind { width: 1.15em; height: 1.15em; color: var(--label-2); }
+
 /* iOS segmented control */
 .units {
-  margin-left: auto;
   display: flex;
   padding: 2px;
   border-radius: 9px;
@@ -295,6 +361,7 @@ main {
 
 /* Reduce Motion: keep fades, drop the scaling. app.js also stiffens the springs. */
 @media (prefers-reduced-motion: reduce) {
+  .menu { transform: none; transition: opacity 0.2s, visibility 0s 0.2s; }
   @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
   .bar, .content > * { animation-duration: 0.3s; }
 }

@@ -39,7 +39,7 @@ const labelEls = [0, 1, 2, 3, 4, 5].map((i) => $("l" + i));
 const bearingEls = labelEls.map((g) => g.querySelector(".b"));
 const numEls = labelEls.map((g) => g.querySelector(".k"));
 
-let shops = [];          // [{lat, lon, name}]
+let shops = [];          // [{lat, lon, name, kind}] - kind: s bottle shop, p pub, b bar, c club
 let here = null;         // {lat, lon}
 let targets = [];        // nearest ARROWS shops, closest first: [{shop, d}]
 let heading = null;      // degrees from true north, smoothed
@@ -58,9 +58,11 @@ let live = null;         // {lat, lon, shops} from OpenStreetMap when outside RE
 let nextLiveFetch = 0;   // don't hammer the free API
 let pinned = null;       // a shop picked from the list, or null to follow the nearest
 let imperial = false;    // miles and feet instead of km and m
+let kinds = new Set("spbc"); // which kinds of place to point at
 try {
   pinned = JSON.parse(localStorage.getItem("pinned") || "null");
   imperial = localStorage.getItem("units") === "imperial";
+  if (localStorage.getItem("kinds")) kinds = new Set(localStorage.getItem("kinds"));
 } catch {}
 const save = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
 const shopKey = (s) => `${s.lat},${s.lon}`;
@@ -108,7 +110,8 @@ function declination(lat, lon) {
 const inRegion = ({ lat, lon }) => lat >= REGION.s && lat <= REGION.n && lon >= REGION.w && lon <= REGION.e;
 
 async function overpassAround({ lat, lon }, radius) {
-  const q = `[out:json][timeout:25];nwr["shop"~"^(alcohol|wine)$"](around:${radius},${lat},${lon});out center tags;`;
+  const near = `(around:${radius},${lat},${lon})`;
+  const q = `[out:json][timeout:25];(nwr["shop"~"^(alcohol|wine)$"]${near};nwr["amenity"~"^(pub|bar|nightclub)$"]["name"]${near};);out center tags;`;
   let lastErr;
   for (const url of OVERPASS) {
     try {
@@ -119,7 +122,8 @@ async function overpassAround({ lat, lon }, radius) {
         const t = el.tags || {};
         let name = t.name || t.brand || "Bottle shop";
         if (t.branch && !name.toLowerCase().includes(t.branch.toLowerCase())) name += ` ${t.branch}`;
-        return { lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon, name };
+        const kind = t.shop ? "s" : { pub: "p", bar: "b", nightclub: "c" }[t.amenity];
+        return { lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon, name, kind };
       }).filter((shop) => shop.lat != null);
     } catch (err) { lastErr = err; }
   }
@@ -159,7 +163,7 @@ function pickTargets() {
   const pinKey = pinned && shopKey(pinned);
   const best = [];
   for (const shop of outside ? live.shops : shops) {
-    if (shop === pinned || (pinKey && shopKey(shop) === pinKey)) continue;
+    if (!kinds.has(shop.kind) || shop === pinned || (pinKey && shopKey(shop) === pinKey)) continue;
     const d = metres(here.lat, here.lon, shop.lat, shop.lon);
     if (best.length === ARROWS && d >= best[ARROWS - 1].d) continue;
     let i = best.length;
@@ -192,6 +196,7 @@ function pickTargets() {
     k.className = "i"; k.textContent = i + 1; // same number as its arrow
     row.className = "row";
     n.className = "n"; n.textContent = shop.name;
+    row.append(kindIcon(shop.kind));
     m.className = "d"; m.textContent = formatDistance(d);
     row.append(n, m);
     btn.append(k, row);
@@ -259,12 +264,23 @@ function status(text) {
 }
 
 // Cross-fade the name when the nearest shop changes.
+// The little bottle / mug / glass / club icon for a place.
+function kindIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "kind");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#k-${kind || "s"}`);
+  svg.append(use);
+  return svg;
+}
+
 function showShop(shop) {
   if (shownShop && shopKey(shop) === shopKey(shownShop)) return;
   const first = shownShop === null;
   shownShop = shop;
   nameEl.classList.remove("status");
-  nameEl.textContent = shop.name;
+  nameEl.replaceChildren(kindIcon(shop.kind), shop.name);
   if (first || !nameEl.animate) return;
   nameEl.animate(reduceMotion.matches
     ? [{ opacity: 0 }, { opacity: 1 }]
@@ -460,8 +476,12 @@ async function load() {
   requestAnimationFrame(frame);
 
   try {
-    const res = await fetch("data/shops.json", { cache: "no-cache" });
-    shops = (await res.json()).shops.map(([lat, lon, name]) => ({ lat, lon, name }));
+    // places.json has pubs, bars and clubs too; fall back to the bottle shop list.
+    let res = await fetch("data/places.json", { cache: "no-cache" });
+    if (!res.ok) res = await fetch("data/shops.json", { cache: "no-cache" });
+    const data = await res.json();
+    shops = (data.places || data.shops).map(([lat, lon, name, kind]) =>
+      ({ lat, lon, name, kind: data.places ? kind : "s" }));
   } catch {
     status("Couldn't load shops");
     return;
@@ -477,7 +497,7 @@ async function load() {
     const btn = e.target.closest("button[data-slot]");
     const t = btn && targets[+btn.dataset.slot];
     if (!t) return;
-    pinned = { lat: t.shop.lat, lon: t.shop.lon, name: t.shop.name };
+    pinned = { lat: t.shop.lat, lon: t.shop.lon, name: t.shop.name, kind: t.shop.kind };
     save("pinned", JSON.stringify(pinned));
     pickTargets();
   });
@@ -497,6 +517,31 @@ async function load() {
     pickTargets();
   }));
   showUnits();
+
+  // Which kinds of place: a pull-down menu with checkmarks, like iOS.
+  const filterBtn = $("filter"), menu = $("menu");
+  const items = menu.querySelectorAll("[data-kind]");
+  const showKinds = () => {
+    items.forEach((b) => b.setAttribute("aria-checked", String(kinds.has(b.dataset.kind))));
+    filterBtn.classList.toggle("active", kinds.size < items.length);
+  };
+  const openMenu = (open) => {
+    menu.classList.toggle("open", open);
+    filterBtn.setAttribute("aria-expanded", String(open));
+  };
+  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openMenu(!menu.classList.contains("open")); });
+  items.forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const k = b.dataset.kind;
+    if (kinds.has(k) && kinds.size === 1) return; // keep at least one
+    if (kinds.has(k)) kinds.delete(k); else kinds.add(k);
+    save("kinds", [...kinds].join(""));
+    showKinds();
+    pickTargets();
+  }));
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target)) openMenu(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") openMenu(false); });
+  showKinds();
 
   setTimeout(() => {
     const canAsk = typeof DeviceOrientationEvent !== "undefined" &&

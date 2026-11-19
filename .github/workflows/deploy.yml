@@ -28,6 +28,7 @@ jobs:
         run: |
           pip install --quiet openpyxl
           python3 scripts/update_shops.py
+          python3 scripts/update_places.py
 
       # Only commits when the shop list actually changed. It's authored as the
       # repo owner (GitHub no-reply address) so the refresh counts on your
