@@ -34,7 +34,35 @@ const OVERPASS = [
 
 const $ = (id) => document.getElementById(id);
 const app = $("app"), dialEl = $("dial");
-const distEl = $("dist"), nameEl = $("name"), othersEl = $("others");
+const distEl = $("dist"), nameEl = $("name"), othersEl = $("others"), hintEl = $("hint");
+
+// ------------------------------------------------------------------ hints --
+// When something stops the app working (a permission turned down, location
+// off, an app's built-in browser, a bug), say so under the name, with the fix.
+// Several can be true at once; the most important one shows, and each kind
+// clears itself once the problem goes away.
+const HINT_ORDER = ["error", "location", "compass", "precise", "inapp"];
+const hints = {};
+let hintKind = null;
+function showHint() {
+  hintKind = HINT_ORDER.find((k) => hints[k]) || null;
+  hintEl.hidden = !hintKind;
+  if (hintKind && hintEl.textContent !== hints[hintKind]) hintEl.textContent = hints[hintKind];
+}
+function hint(kind, text) { hints[kind] = text; showHint(); }
+function clearHint(kind) { if (hints[kind]) { delete hints[kind]; showHint(); } }
+addEventListener("error", (e) => {
+  if (!e.message || /ResizeObserver|^Script error/i.test(e.message)) return; // harmless / not ours
+  hint("error", `Something went wrong (${e.message}). A screenshot of this helps fix it.`);
+});
+addEventListener("unhandledrejection", (e) => {
+  const m = e.reason && (e.reason.message || String(e.reason));
+  if (m && !/Abort|NotAllowed|timed? ?out/i.test(m)) hint("error", `Something went wrong (${m}). A screenshot of this helps fix it.`);
+});
+
+// Links opened from Instagram, Facebook, Messenger, Snapchat, TikTok and co.
+// open in that app's own browser, which often blocks the compass or location.
+const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Snapchat|TikTok|musical_ly|Bytedance|\bLine\/|MicroMessenger|LinkedInApp|Pinterest/i.test(navigator.userAgent);
 const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
 const labelEls = [0, 1, 2, 3, 4, 5].map((i) => $("l" + i));
 const bearingEls = labelEls.map((g) => g.querySelector(".b"));
@@ -190,7 +218,7 @@ function pickTargets() {
   if (best.length) {
     const dist = needsTap ? "" : formatDistance(best[0].d);
     if (distEl.textContent !== dist) distEl.textContent = dist;
-    if (needsTap) status("Tap to start"); else showShop(best[0].shop);
+    if (needsTap) status("Tap anywhere to start"); else showShop(best[0].shop);
   } else {
     distEl.textContent = "";
     status("None nearby");
@@ -233,6 +261,7 @@ function screenAngle() {
 }
 
 function onHeading(magnetic) {
+  if (heading === null) { clearHint("compass"); clearHint("inapp"); } // readings are coming in
   const h = rad(magnetic + decl);
   if (heading === null) { hx = Math.cos(h); hy = Math.sin(h); }
   hx += (Math.cos(h) - hx) * 0.25;
@@ -259,12 +288,12 @@ function onOrientation(e) {
 }
 const onMotion = (e) => { raw.motion = e; raw.motionCount++; }; // only listened to in landscape
 
+// Listen to both: Android sends the compass on "deviceorientationabsolute",
+// iPhones on "deviceorientation" (with webkitCompassHeading). onOrientation
+// ignores readings that aren't tied to north.
 function startCompass() {
-  if ("ondeviceorientationabsolute" in window) {
-    window.addEventListener("deviceorientationabsolute", onOrientation);
-  } else {
-    window.addEventListener("deviceorientation", onOrientation);
-  }
+  window.addEventListener("deviceorientationabsolute", onOrientation);
+  window.addEventListener("deviceorientation", onOrientation);
 }
 
 // ----------------------------------------------------------------- motion --
@@ -487,6 +516,12 @@ function onPosition(pos) {
   if (raw.posAt) raw.fixGap = now - raw.posAt;
   raw.pos = pos; raw.posAt = now; raw.posCount++;
   here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  clearHint("location");
+  // "Precise Location" off gives a fix kilometres out: the nearest shops will be wrong.
+  if (pos.coords.accuracy > 1000) {
+    hint("precise", `Your location is only accurate to about ${Math.round(pos.coords.accuracy / 1000)} km, so ` +
+      "distances will be off. Turn on Precise Location: Settings › Privacy & Security › Location Services › Safari Websites.");
+  } else clearHint("precise");
   decl = declination(here.lat, here.lon);
   pickTargets();
 }
@@ -496,6 +531,13 @@ function onPositionError(err) {
     locationOff = true;
     distEl.textContent = "";
     status("Location off");
+    hint("location", IN_APP
+      ? "This app's built-in browser isn't sharing your location. Tap ⋯ or the share button and choose Open in Safari."
+      : "Location is blocked for this site. On iPhone: Settings › Privacy & Security › Location Services › " +
+        "Safari Websites › While Using the App, then reload. Or open the page menu (ᴀA or ⋯ by the address) › " +
+        "Website Settings › Location › Allow.");
+  } else if (!here) {
+    hint("location", "Can't get a location fix yet. Check Location Services is on, or try near a window or outside.");
   }
 }
 
@@ -509,7 +551,8 @@ function startLocation() {
   // has a genuinely new fix - usually about once a second.
   let asking = false;
   setInterval(() => {
-    if (asking || locationOff || document.hidden || performance.now() - (raw.posAt || 0) < UPDATE_MS) return;
+    // Only once a first fix has arrived, so requests never stack up behind the permission prompt.
+    if (asking || locationOff || document.hidden || !raw.posAt || performance.now() - raw.posAt < UPDATE_MS) return;
     asking = true;
     navigator.geolocation.getCurrentPosition(
       (pos) => { asking = false; onPosition(pos); },
@@ -697,11 +740,30 @@ function startExtraSensors() {
 
 // iOS (and some Chrome builds) only send compass data after a tap and a
 // permission prompt. Ask for it on the first tap anywhere if nothing arrives.
+function compassBlocked() {
+  // Only if readings really aren't coming (some browsers say "denied" but still send them).
+  setTimeout(() => {
+    if (heading === null) hint("compass", "Compass access was turned down, so the arrows can't follow your phone. " +
+      "Fully close Safari (swipe it away), open the link again and tap Allow.");
+  }, 600);
+}
+
 function askForCompass() {
   needsTap = false;
   app.classList.remove("idle");
-  try { DeviceOrientationEvent.requestPermission().catch(() => {}); } catch {}
+  try {
+    DeviceOrientationEvent.requestPermission()
+      .then((answer) => { if (answer !== "granted") compassBlocked(); })
+      .catch(compassBlocked);
+  } catch { compassBlocked(); }
   try { DeviceMotionEvent.requestPermission().catch(() => {}); } catch {} // for the sensor panel
+  setTimeout(() => {
+    if (heading === null && !hints.compass) {
+      hint("compass", IN_APP
+        ? "No compass in this app's built-in browser. Tap ⋯ or the share button and choose Open in Safari."
+        : "No compass readings yet. Move your phone in a figure-8 to wake the compass up.");
+    }
+  }, 3000);
   keepAwake();
   if (here) pickTargets(); else status(locationOff ? "Location off" : "Locating…");
 }
@@ -739,6 +801,8 @@ async function load() {
 
   startCompass();
   startLocation();
+  if (IN_APP) hint("inapp", "Opened inside another app? Its built-in browser can block the compass and location. " +
+    "If the arrows don't move, tap ⋯ or the share button and choose Open in Safari.");
   keepAwake();
   setInterval(pickTargets, UPDATE_MS); // distances, nearest places and list, twice a second
 
@@ -799,7 +863,7 @@ async function load() {
     if (heading === null && canAsk) {
       needsTap = true;
       app.classList.add("idle");
-      if (here) pickTargets(); else if (!locationOff) status("Tap to start");
+      if (here) pickTargets(); else if (!locationOff) status("Tap anywhere to start");
       app.addEventListener("click", () => { if (needsTap) askForCompass(); });
     } else {
       app.classList.remove("idle");

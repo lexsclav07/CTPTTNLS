@@ -318,6 +318,15 @@ main {
 }
 .idle .name, .name.status { font-weight: 400; color: var(--label-2); }
 
+.hint {
+  max-width: 22rem;
+  margin: 8px auto 0;
+  font-size: 0.765rem;         /* Footnote, 13 pt */
+  line-height: 1.35;
+  color: var(--label-2);
+}
+.hint[hidden] { display: none; }
+
 /* ---------- next five: inset grouped list ---------- */
 
 .others {
