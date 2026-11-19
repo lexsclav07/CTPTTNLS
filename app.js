@@ -270,7 +270,7 @@ function placeLabels() {
   }
 
   const n = rad(dialAngle); // the N on the dial counts as taken
-  const boxes = [{ x: 50 + 44.5 * Math.sin(n), y: 50 - 44.5 * Math.cos(n), w: 4.8, h: 5 }];
+  const boxes = [{ x: 50 + 45.75 * Math.sin(n), y: 50 - 45.75 * Math.cos(n), w: 4.4, h: 4.4 }];
   const fits = (box) => !boxes.some((o) => Math.abs(o.x - box.x) < (o.w + box.w) / 2 + 0.5 &&
                                            Math.abs(o.y - box.y) < (o.h + box.h) / 2 + 0.5);
   const place = (i, angle, h, offsets) => {

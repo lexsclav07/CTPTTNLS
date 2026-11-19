@@ -58,7 +58,7 @@ main {
 
 .north {
   fill: var(--red);
-  font-size: 6px;
+  font-size: 5px; /* sits in the tick band (r 43.5-48) like the ticks */
   font-weight: 700;
   text-anchor: middle;
   font-family: inherit;
