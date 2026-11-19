@@ -219,13 +219,24 @@ function onHeading(magnetic) {
   heading = (deg(Math.atan2(hy, hx)) + 360) % 360;
 }
 
+// Raw readings, kept for the landscape sensor panel.
+const raw = { ori: null, oriCount: 0, mag: null, pos: null, posCount: 0, motion: null, motionCount: 0, extra: {} };
+
+// Both report where the top of the phone points; adding the screen angle makes
+// it where the top of the *screen* points, so landscape works too.
 function onOrientation(e) {
+  raw.ori = e; raw.oriCount++;
+  let mag = null;
   if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) {
-    onHeading(e.webkitCompassHeading); // iOS: already a compass heading
+    mag = e.webkitCompassHeading + screenAngle(); // iOS: already a compass heading
   } else if (e.absolute && typeof e.alpha === "number") {
-    onHeading(360 - e.alpha + screenAngle()); // Android: alpha runs anticlockwise
+    mag = 360 - e.alpha + screenAngle(); // Android: alpha runs anticlockwise
   }
+  if (mag === null) return;
+  raw.mag = ((mag % 360) + 360) % 360;
+  onHeading(mag);
 }
+window.addEventListener("devicemotion", (e) => { raw.motion = e; raw.motionCount++; });
 
 function startCompass() {
   if ("ondeviceorientationabsolute" in window) {
@@ -427,6 +438,7 @@ function startLocation() {
   navigator.geolocation.watchPosition(
     (pos) => {
       here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      raw.pos = pos; raw.posCount++;
       decl = declination(here.lat, here.lon);
       pickTargets();
     },
@@ -443,11 +455,169 @@ function startLocation() {
 
 // ------------------------------------------------------------- wake lock ---
 
+let wakeLock = null;
 async function keepAwake() {
-  try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch {}
+  try { if (navigator.wakeLock && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen"); } catch {}
 }
 // The browser drops the lock whenever the tab is hidden; take it back on return.
 document.addEventListener("visibilitychange", keepAwake);
+
+// -------------------------------------------------------------- landscape --
+// Turn the phone sideways and the page glides into two columns: compass on the
+// left, list on the right. FLIP: note where things are, switch the layout,
+// then animate each piece from its old spot to its new one.
+
+const landscapeMq = matchMedia("(orientation: landscape)");
+let isLandscape = null;
+
+function applyLayout(animate) {
+  const want = landscapeMq.matches;
+  if (want === isLandscape) return;
+  const els = [$("wrap"), $("readout"), othersEl];
+  const before = els.map((el) => el.getBoundingClientRect());
+  isLandscape = want;
+  app.classList.toggle("landscape", want);
+  if (want) renderSensors();
+  if (!animate || !app.animate) return;
+
+  if (reduceMotion.matches) {
+    document.querySelector(".content").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250 });
+    return;
+  }
+  els.forEach((el, i) => {
+    const a = before[i], b = el.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+    const scale = i === 0 ? ` scale(${a.width / b.width})` : ""; // only the compass changes size
+    el.animate([
+      { transformOrigin: "0 0", transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)${scale}` },
+      { transformOrigin: "0 0", transform: "none" },
+    ], { duration: 750, easing: "cubic-bezier(0.32, 0.72, 0, 1)" });
+  });
+  if (want) $("sensors").animate([{ opacity: 0, transform: "translateY(16px)" }, { opacity: 1, transform: "none" }],
+    { duration: 500, delay: 300, easing: "cubic-bezier(0.2, 0.9, 0.25, 1)", fill: "backwards" });
+}
+if (landscapeMq.addEventListener) landscapeMq.addEventListener("change", () => applyLayout(true));
+else landscapeMq.addListener(() => applyLayout(true));
+
+// ---------------------------------------------------------------- sensors --
+// Everything the page reads, refreshed 8 times a second while it's showing.
+
+const num = (v, d = 1, unit = "") => (typeof v === "number" && isFinite(v) ? `${v.toFixed(d)}${unit}` : "—");
+const xyz = (o, d = 2) => (o && o.x !== null && o.x !== undefined ? `${num(o.x, d)}  ${num(o.y, d)}  ${num(o.z, d)}` : "—");
+const yesNo = (v) => (v === undefined || v === null ? "—" : v ? "yes" : "no");
+
+const SENSORS = [
+  ["Location (GPS)", [
+    ["Latitude", () => num(raw.pos?.coords.latitude, 6, "°")],
+    ["Longitude", () => num(raw.pos?.coords.longitude, 6, "°")],
+    ["Accuracy", () => num(raw.pos?.coords.accuracy, 0, " m")],
+    ["Altitude", () => num(raw.pos?.coords.altitude, 1, " m")],
+    ["Altitude accuracy", () => num(raw.pos?.coords.altitudeAccuracy, 0, " m")],
+    ["Speed", () => (raw.pos?.coords.speed == null ? "—" : `${num(raw.pos.coords.speed, 1, " m/s")}  (${num(raw.pos.coords.speed * 3.6, 0, " km/h")})`)],
+    ["GPS course", () => num(raw.pos?.coords.heading, 0, "°")],
+    ["Last fix", () => (raw.pos ? `${((Date.now() - raw.pos.timestamp) / 1000).toFixed(1)} s ago` : "—")],
+    ["Fixes", () => String(raw.posCount)],
+  ]],
+  ["Compass (device orientation)", [
+    ["Event", () => (raw.ori ? raw.ori.type : "—")],
+    ["Alpha (z)", () => num(raw.ori?.alpha, 1, "°")],
+    ["Beta (x, tilt)", () => num(raw.ori?.beta, 1, "°")],
+    ["Gamma (y, roll)", () => num(raw.ori?.gamma, 1, "°")],
+    ["Absolute", () => yesNo(raw.ori?.absolute)],
+    ["iOS compass heading", () => num(raw.ori?.webkitCompassHeading, 1, "°")],
+    ["iOS compass accuracy", () => (raw.ori?.webkitCompassAccuracy >= 0 ? `±${raw.ori.webkitCompassAccuracy.toFixed(0)}°` : "—")],
+    ["Screen angle", () => `${screenAngle()}°`],
+    ["Magnetic heading", () => num(raw.mag, 1, "°")],
+    ["Declination", () => num(decl, 1, "°")],
+    ["True heading (smoothed)", () => num(heading, 1, "°")],
+    ["Events", () => String(raw.oriCount)],
+  ]],
+  ["Motion", [
+    ["Acceleration x y z", () => xyz(raw.motion?.acceleration) + (raw.motion?.acceleration?.x != null ? " m/s²" : "")],
+    ["With gravity x y z", () => xyz(raw.motion?.accelerationIncludingGravity) + (raw.motion?.accelerationIncludingGravity?.x != null ? " m/s²" : "")],
+    ["Rotation α β γ", () => { const r = raw.motion?.rotationRate; return r && r.alpha != null ? `${num(r.alpha, 0)}  ${num(r.beta, 0)}  ${num(r.gamma, 0)} °/s` : "—"; }],
+    ["Interval", () => num(raw.motion?.interval, 0, " ms")],
+    ["Events", () => String(raw.motionCount)],
+    ["Magnetometer", () => (raw.extra.mag ? `${xyz(raw.extra.mag, 0)} µT` : raw.extra.magErr || "—")],
+    ["Ambient light", () => (raw.extra.lux != null ? `${raw.extra.lux.toFixed(0)} lx` : raw.extra.luxErr || "—")],
+  ]],
+  ["Pointing at", [
+    ["Place", () => (targets[0] ? targets[0].shop.name : "—")],
+    ["Kind", () => (targets[0] ? { s: "Bottle shop", p: "Pub", b: "Bar", c: "Club" }[targets[0].shop.kind] : "—")],
+    ["Coordinates", () => (targets[0] ? `${targets[0].shop.lat.toFixed(5)}, ${targets[0].shop.lon.toFixed(5)}` : "—")],
+    ["Distance", () => (targets[0] ? num(targets[0].d, 0, " m") : "—")],
+    ["Bearing", () => (targets[0] ? `${bearings[0]}°` : "—")],
+    ["Arrow angle on screen", () => num(angles[0] === null ? null : wrap180(angles[0]), 1, "°")],
+    ["Picked by you", () => yesNo(!!pinned)],
+  ]],
+  ["Data", [
+    ["Source", () => (here && !inRegion(here) ? "OpenStreetMap (live)" : "Built-in list")],
+    ["Places loaded", () => String(here && !inRegion(here) ? live?.shops.length ?? 0 : shops.length)],
+    ["List updated", () => raw.extra.updated || "—"],
+    ["Showing", () => [...kinds].map((k) => ({ s: "bottle shops", p: "pubs", b: "bars", c: "clubs" }[k])).join(", ")],
+    ["Units", () => (imperial ? "imperial" : "metric")],
+  ]],
+  ["Device", [
+    ["Orientation", () => (screen.orientation ? `${screen.orientation.type} (${screen.orientation.angle}°)` : `${window.orientation ?? 0}°`)],
+    ["Viewport", () => `${innerWidth} × ${innerHeight} @${devicePixelRatio}x`],
+    ["Screen awake", () => (wakeLock ? yesNo(!wakeLock.released) : "not available")],
+    ["Online", () => yesNo(navigator.onLine)],
+    ["Network", () => (navigator.connection ? `${navigator.connection.effectiveType || "?"}, ${navigator.connection.downlink ?? "?"} Mb/s` : "not available")],
+    ["Battery", () => (raw.extra.battery ? `${Math.round(raw.extra.battery.level * 100)}%${raw.extra.battery.charging ? ", charging" : ""}` : "not available")],
+    ["Appearance", () => `${matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"}${reduceMotion.matches ? ", reduce motion" : ""}`],
+  ]],
+];
+
+let sensorRows = null, sensorTimer = null;
+function renderSensors() {
+  const box = $("sensors");
+  if (!sensorRows) {
+    sensorRows = [];
+    for (const [title, rows] of SENSORS) {
+      const h = document.createElement("h2"), dl = document.createElement("dl");
+      h.textContent = title;
+      for (const [label, get] of rows) {
+        const r = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd");
+        r.className = "r"; dt.textContent = label;
+        r.append(dt, dd); dl.append(r);
+        sensorRows.push([dd, get]);
+      }
+      box.append(h, dl);
+    }
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "Headings are degrees clockwise from north. Some sensors only exist on some phones.";
+    box.append(note);
+    startExtraSensors();
+  }
+  clearInterval(sensorTimer);
+  const tick = () => {
+    if (!isLandscape) { clearInterval(sensorTimer); return; }
+    for (const [dd, get] of sensorRows) {
+      let v; try { v = get(); } catch { v = "—"; }
+      if (dd.textContent !== v) dd.textContent = v;
+    }
+  };
+  tick();
+  sensorTimer = setInterval(tick, 125);
+}
+
+// Extras some browsers have (mostly Chrome on Android): battery, magnetometer, light.
+function startExtraSensors() {
+  if (navigator.getBattery) navigator.getBattery().then((b) => { raw.extra.battery = b; }).catch(() => {});
+  for (const [name, key, onRead] of [
+    ["Magnetometer", "magErr", (s) => { raw.extra.mag = { x: s.x, y: s.y, z: s.z }; }],
+    ["AmbientLightSensor", "luxErr", (s) => { raw.extra.lux = s.illuminance; }],
+  ]) {
+    if (!(name in window)) { raw.extra[key] = "not available"; continue; }
+    try {
+      const sensor = new window[name]({ frequency: 5 });
+      sensor.addEventListener("reading", () => onRead(sensor));
+      sensor.addEventListener("error", (e) => { raw.extra[key] = e.error?.name === "NotAllowedError" ? "not allowed" : "not available"; });
+      sensor.start();
+    } catch { raw.extra[key] = "not available"; }
+  }
+}
 
 // ------------------------------------------------------------------ start --
 
@@ -457,6 +627,7 @@ function askForCompass() {
   needsTap = false;
   app.classList.remove("idle");
   try { DeviceOrientationEvent.requestPermission().catch(() => {}); } catch {}
+  try { DeviceMotionEvent.requestPermission().catch(() => {}); } catch {} // for the sensor panel
   keepAwake();
   if (here) pickTargets(); else status(locationOff ? "Location off" : "Locating…");
 }
@@ -473,6 +644,7 @@ async function load() {
     if (i !== 0) ticks.appendChild(l); // the N sits here
   }
   readPalette();
+  applyLayout(false);
   requestAnimationFrame(frame);
 
   try {
@@ -480,6 +652,7 @@ async function load() {
     let res = await fetch("data/places.json", { cache: "no-cache" });
     if (!res.ok) res = await fetch("data/shops.json", { cache: "no-cache" });
     const data = await res.json();
+    raw.extra.updated = data.updated;
     shops = (data.places || data.shops).map(([lat, lon, name, kind]) =>
       ({ lat, lon, name, kind: data.places ? kind : "s" }));
   } catch {

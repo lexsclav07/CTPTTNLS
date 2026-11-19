@@ -217,9 +217,9 @@ main {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: none; }
 }
-.bar, .content > * { animation: arrive 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) both; }
-.content > :nth-child(2) { animation-delay: 0.06s; }
-.content > :nth-child(3) { animation-delay: 0.12s; }
+.bar, .dial-wrap, .readout, .others { animation: arrive 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+.readout { animation-delay: 0.06s; }
+.others { animation-delay: 0.12s; }
 
 /* ---------- compass ---------- */
 
@@ -355,6 +355,82 @@ main {
 .others .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .others .d { flex: none; color: var(--label-2); font-variant-numeric: tabular-nums; }
 
+/* ---------- landscape: compass left, list (and sensors) right ---------- */
+
+.side { display: contents; }   /* portrait: readout and list stack in .content */
+.sensors { display: none; }
+
+main.landscape { height: 100vh; height: 100dvh; }
+main.landscape .content {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  min-height: 0;
+}
+main.landscape .dial-wrap {
+  flex: none;
+  width: min(100%, calc(100dvh - 112px), 48vw, 440px);
+}
+main.landscape .side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  max-width: 460px;
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;            /* scrolls on its own; the compass stays put */
+  overscroll-behavior: contain;
+  padding: 8px 0 32px;
+  -webkit-overflow-scrolling: touch;
+  /* fade the bottom edge so it's clear there's more to scroll to */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+main.landscape .readout { text-align: left; }
+main.landscape .others { width: 100%; flex: none; }
+main.landscape .sensors { display: block; }
+
+/* ---------- sensors: iOS grouped tables ---------- */
+
+.sensors h2 {
+  margin: 20px 0 6px 16px;
+  font-size: 0.765rem;         /* Footnote, 13 pt */
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+}
+.sensors h2:first-child { margin-top: 4px; }
+.sensors dl {
+  padding-left: 16px;
+  border-radius: 12px;
+  background: var(--group-bg);
+  font-size: 0.882rem;
+}
+.sensors .r {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 2.6em;
+  align-items: center;
+  padding-right: 16px;
+  border-bottom: 0.5px solid var(--separator);
+}
+.sensors .r:last-child { border-bottom: 0; }
+.sensors dt { color: var(--label); white-space: nowrap; }
+.sensors dd {
+  margin: 0;
+  color: var(--label-2);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.sensors .note { margin: 6px 16px 0; font-size: 0.7rem; color: var(--label-3); }
+
 /* ---------- watermark ---------- */
 
 .credit {
@@ -381,5 +457,5 @@ main {
 @media (prefers-reduced-motion: reduce) {
   .menu { transform: none; transition: opacity 0.2s, visibility 0s 0.2s; }
   @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
-  .bar, .content > * { animation-duration: 0.3s; }
+  .bar, .dial-wrap, .readout, .others { animation-duration: 0.3s; }
 }
