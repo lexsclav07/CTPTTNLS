@@ -4,6 +4,7 @@
 
 const ARROWS = 6;         // the nearest shop + the next 5
 const ON_TARGET_DEG = 12; // main arrow goes green when you're facing the shop
+const UPDATE_MS = 500;    // how often distances, the list and the sensor panel refresh
 
 // Phones report heading against magnetic north; shop bearings are against true
 // north. The gap (declination) is +12.8° in Sydney but -1.5° in Perth, so look
@@ -186,7 +187,18 @@ function pickTargets() {
     status("None nearby");
   }
 
-  // The next five, smaller, under the main readout.
+  // The next five, smaller, under the main readout. This runs every half
+  // second, so if the same shops are listed just update their distances -
+  // rebuilding the rows would swallow a tap that lands mid-update.
+  const listKey = best.slice(1).map(({ shop }) => shopKey(shop) + shop.kind).join("|");
+  if (listKey === shownList) {
+    othersEl.querySelectorAll(".d").forEach((el, i) => {
+      const text = formatDistance(best[i + 1].d);
+      if (el.textContent !== text) el.textContent = text;
+    });
+    return;
+  }
+  shownList = listKey;
   othersEl.replaceChildren(...best.slice(1).map(({ shop, d }, i) => {
     const li = document.createElement("li"), btn = document.createElement("button");
     btn.type = "button";
@@ -267,6 +279,7 @@ function spring(x, v, target, dt, { k, c }) {
 }
 
 let shownShop = null; // the shop whose name is showing
+let shownList = "";    // which shops the list rows are for
 
 function status(text) {
   nameEl.classList.add("status");
@@ -449,7 +462,7 @@ function startLocation() {
         status("Location off");
       }
     },
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }, // always a fresh fix
   );
 }
 
@@ -500,7 +513,7 @@ if (landscapeMq.addEventListener) landscapeMq.addEventListener("change", () => a
 else landscapeMq.addListener(() => applyLayout(true));
 
 // ---------------------------------------------------------------- sensors --
-// Everything the page reads, refreshed 8 times a second while it's showing.
+// Everything the page reads, refreshed every UPDATE_MS while it's showing.
 
 const num = (v, d = 1, unit = "") => (typeof v === "number" && isFinite(v) ? `${v.toFixed(d)}${unit}` : "—");
 const xyz = (o, d = 2) => (o && o.x !== null && o.x !== undefined ? `${num(o.x, d)}  ${num(o.y, d)}  ${num(o.z, d)}` : "—");
@@ -599,7 +612,7 @@ function renderSensors() {
     }
   };
   tick();
-  sensorTimer = setInterval(tick, 125);
+  sensorTimer = setInterval(tick, UPDATE_MS);
 }
 
 // Extras some browsers have (mostly Chrome on Android): battery, magnetometer, light.
@@ -663,7 +676,7 @@ async function load() {
   startCompass();
   startLocation();
   keepAwake();
-  setInterval(pickTargets, 30000); // re-check for a live lookup if you've moved
+  setInterval(pickTargets, UPDATE_MS); // distances, nearest places and list, twice a second
 
   // Tap a shop in the list to point the main arrow at it.
   othersEl.addEventListener("click", (e) => {
