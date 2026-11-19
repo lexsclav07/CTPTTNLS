@@ -35,6 +35,7 @@ const $ = (id) => document.getElementById(id);
 const app = $("app"), dialEl = $("dial");
 const distEl = $("dist"), nameEl = $("name"), othersEl = $("others");
 const arrowEls = [$("a0"), $("a1"), $("a2"), $("a3"), $("a4"), $("a5")];
+const numEls = [null, $("n1"), $("n2"), $("n3"), $("n4"), $("n5")];
 
 let shops = [];          // [{lat, lon, name}]
 let here = null;         // {lat, lon}
@@ -155,12 +156,13 @@ function pickTargets() {
   }
 
   // The next five, smaller, under the main readout.
-  othersEl.replaceChildren(...best.slice(1).map(({ shop, d }) => {
+  othersEl.replaceChildren(...best.slice(1).map(({ shop, d }, i) => {
     const li = document.createElement("li");
-    const n = document.createElement("span"), m = document.createElement("span");
+    const k = document.createElement("span"), n = document.createElement("span"), m = document.createElement("span");
+    k.className = "i"; k.textContent = i + 1; // same number as its arrow
     n.className = "n"; n.textContent = shop.name;
     m.className = "d"; m.textContent = formatDistance(d);
-    li.append(n, m);
+    li.append(k, n, m);
     return li;
   }));
 }
@@ -212,12 +214,37 @@ function frame() {
     arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)`);
   }
 
+  placeNumbers();
+
   const on = heading !== null && angles[0] !== null && Math.abs(wrap180(angles[0])) < ON_TARGET_DEG;
   arrowEls[0].classList.toggle("on", on);
   if (on && !wasOnTarget && navigator.vibrate) navigator.vibrate(25);
   wasOnTarget = on;
 
   requestAnimationFrame(frame);
+}
+
+// Each faint arrow gets its list number just past its tip. If that spot is
+// under the main arrow or on another number, slide it sideways around the dial.
+function placeNumbers() {
+  const placed = [];
+  for (let i = 1; i < ARROWS; i++) {
+    const el = numEls[i];
+    if (angles[i] === null) { el.style.display = "none"; continue; }
+    el.style.display = "";
+    let spot = null;
+    for (const off of [0, 9, -9, 18, -18]) {
+      const a = rad(angles[i] + off);
+      const xy = [50 + 39.5 * Math.sin(a), 50 - 39.5 * Math.cos(a)];
+      const underMain = angles[0] !== null && Math.abs(wrap180(angles[i] + off - angles[0])) < 7;
+      const clash = placed.some((p) => Math.hypot(p[0] - xy[0], p[1] - xy[1]) < 6);
+      if (!spot) spot = xy;
+      if (!underMain && !clash) { spot = xy; break; }
+    }
+    placed.push(spot);
+    el.setAttribute("x", spot[0].toFixed(2));
+    el.setAttribute("y", spot[1].toFixed(2));
+  }
 }
 
 // --------------------------------------------------------------- location --

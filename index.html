@@ -18,6 +18,8 @@
   <script src="app.js?v=dev" defer></script>
 </head>
 <body>
+  <!-- Shop data: Liquor & Gaming NSW (CC BY 4.0) and © OpenStreetMap contributors (ODbL).
+       See https://github.com/lexsclav07/CTPTTNLS#data -->
   <main id="app" class="idle">
     <div id="wrap" class="dial-wrap">
       <svg id="dial" class="dial" viewBox="0 0 100 100" aria-hidden="true">
@@ -32,6 +34,12 @@
         <path id="a3" class="other" d="M50 15 L56 27 L51.3 25.2 L51.3 42 L48.7 42 L48.7 25.2 L44 27 Z"/>
         <path id="a2" class="other" d="M50 15 L56 27 L51.3 25.2 L51.3 42 L48.7 42 L48.7 25.2 L44 27 Z"/>
         <path id="a1" class="other" d="M50 15 L56 27 L51.3 25.2 L51.3 42 L48.7 42 L48.7 25.2 L44 27 Z"/>
+        <!-- numbers matching the list under the compass -->
+        <text id="n1" class="num">1</text>
+        <text id="n2" class="num">2</text>
+        <text id="n3" class="num">3</text>
+        <text id="n4" class="num">4</text>
+        <text id="n5" class="num">5</text>
         <!-- nearest shop -->
         <path id="a0" class="main" d="M50 9 L60.5 29 L52.7 26 L52.7 50 L47.3 50 L47.3 26 L39.5 29 Z"/>
         <circle class="hub" cx="50" cy="50" r="3.6"/>
@@ -45,7 +53,6 @@
 
     <ol id="others" class="others" aria-label="Next closest"></ol>
 
-    <a class="credit" href="https://github.com/lexsclav07/CTPTTNLS#data" aria-label="Data credits">©</a>
   </main>
 </body>
 </html>

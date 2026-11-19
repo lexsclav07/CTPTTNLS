@@ -72,6 +72,18 @@ main {
 }
 .arrows .main.on { fill: var(--green); }
 .arrows .hub { fill: var(--fg); }
+.arrows .num {
+  fill: var(--fg);
+  fill-opacity: 0.75;
+  font-size: 5px;
+  font-weight: 650;
+  font-family: inherit;
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 1.4px;
+}
 
 .idle .arrows .main { fill: var(--faint); }
 
@@ -113,20 +125,10 @@ main {
   justify-content: space-between;
   padding: 3px 0;
 }
-.others .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.others .i { flex: none; width: 1.1em; font-weight: 650; font-variant-numeric: tabular-nums; }
+.others .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .others .d { flex: none; font-variant-numeric: tabular-nums; }
 
 /* ---------- misc ---------- */
 
 .idle { cursor: pointer; }
-
-.credit {
-  position: absolute;
-  right: 14px;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  color: var(--muted);
-  opacity: 0.4;
-  font-size: 12px;
-  text-decoration: none;
-  padding: 6px;
-}
