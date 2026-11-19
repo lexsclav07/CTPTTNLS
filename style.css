@@ -121,6 +121,7 @@ main {
   color: var(--fg);
 }
 .toggle[aria-pressed="true"] .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.anywhere .toggle { visibility: hidden; } /* no opening hours outside NSW data */
 .toggle:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 
 /* ---------- misc ---------- */

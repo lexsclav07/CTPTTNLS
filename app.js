@@ -3,8 +3,28 @@
 // ---------------------------------------------------------------- settings --
 
 // Phones report heading against magnetic north; shop bearings are against true
-// north. Around Sydney / Central Coast / Newcastle the difference is ~12.8° E.
-const DECLINATION = 12.8;
+// north. The gap (declination) is +12.8° in Sydney but -1.5° in Perth, so look
+// it up: WMM2025 values for 2027 on a 5° grid, lat -45..-10, lon 110..155.
+// Accurate to ~0.4° anywhere in Australia.
+const DECLINATION_GRID = [
+  [-17.8, -11.7, -6.0, -0.7, 4.1, 8.4, 12.3, 15.6, 18.5, 20.9],
+  [-10.7, -6.4, -2.5, 1.1, 4.4, 7.5, 10.3, 12.9, 15.3, 17.3],
+  [-6.1, -3.2, -0.5, 1.9, 4.2, 6.5, 8.8, 10.9, 12.9, 14.6],
+  [-3.1, -1.2, 0.6, 2.2, 3.9, 5.7, 7.5, 9.3, 11.0, 12.6],
+  [-1.2, 0.0, 1.1, 2.2, 3.4, 4.9, 6.4, 7.9, 9.5, 10.9],
+  [0.0, 0.7, 1.3, 2.0, 2.9, 4.1, 5.4, 6.9, 8.3, 9.6],
+  [0.6, 0.9, 1.2, 1.6, 2.3, 3.3, 4.6, 5.9, 7.3, 8.6],
+  [0.8, 0.9, 0.9, 1.1, 1.6, 2.6, 3.8, 5.1, 6.4, 7.7],
+];
+
+// data/shops.json covers this box (Sydney, Central Coast, Newcastle, Hunter).
+// Anywhere else, shops are looked up live from OpenStreetMap, ignoring hours.
+const REGION = { s: -34.25, w: 150.4, n: -32.5, e: 152.3 };
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 
 // Most shops don't publish hours on OpenStreetMap. For those, assume a
 // conservative "almost every bottlo is open by now" window.
@@ -28,6 +48,9 @@ let wasOnTarget = false;
 let started = false;
 let needsTap = false;
 let locationOff = false;
+let decl = 12.8;          // magnetic declination where you are
+let live = null;         // {lat, lon, shops} from OpenStreetMap when outside REGION
+let nextLiveFetch = 0;   // don't hammer the free API
 let openOnly = true;
 try { openOnly = localStorage.getItem("openOnly") !== "0"; } catch {}
 
@@ -137,13 +160,68 @@ function formatDistance(m) {
 
 // ---------------------------------------------------------------- picking --
 
+function declination(lat, lon) {
+  const g = DECLINATION_GRID;
+  const y = Math.min(Math.max((lat + 45) / 5, 0), g.length - 1.001);
+  const x = Math.min(Math.max((lon - 110) / 5, 0), g[0].length - 1.001);
+  const i = Math.floor(y), j = Math.floor(x), fy = y - i, fx = x - j;
+  return (g[i][j] * (1 - fx) + g[i][j + 1] * fx) * (1 - fy) + (g[i + 1][j] * (1 - fx) + g[i + 1][j + 1] * fx) * fy;
+}
+
+const inRegion = ({ lat, lon }) => lat >= REGION.s && lat <= REGION.n && lon >= REGION.w && lon <= REGION.e;
+
+async function overpassAround({ lat, lon }, radius) {
+  const q = `[out:json][timeout:25];nwr["shop"~"^(alcohol|wine)$"](around:${radius},${lat},${lon});out center tags;`;
+  let lastErr;
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(`${url}?data=${encodeURIComponent(q)}`,
+        AbortSignal.timeout ? { signal: AbortSignal.timeout(25000) } : {});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()).elements.map((el) => {
+        const t = el.tags || {};
+        let name = t.name || t.brand || "Bottle shop";
+        if (t.branch && !name.toLowerCase().includes(t.branch.toLowerCase())) name += ` ${t.branch}`;
+        return { lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon, name };
+      }).filter((shop) => shop.lat != null);
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
+}
+
+async function fetchNearby() {
+  nextLiveFetch = Infinity; // one lookup at a time
+  const at = { ...here };
+  if (!live) { distEl.textContent = ""; nameEl.textContent = "Searching…"; }
+  try {
+    let found = await overpassAround(at, 15000);
+    if (!found.length) found = await overpassAround(at, 80000); // country towns
+    live = { ...at, shops: found };
+  } catch {
+    if (!live) nameEl.textContent = "No signal";
+    return;
+  } finally {
+    nextLiveFetch = Date.now() + 30000;
+  }
+  pickTarget();
+}
+
 function pickTarget() {
-  if (!here || !shops.length) return;
+  if (!here) return;
+  const outside = !inRegion(here);
+  app.classList.toggle("anywhere", outside); // opening hours only work in NSW
+  if (outside) {
+    const moved = live && metres(here.lat, here.lon, live.lat, live.lon) > 5000;
+    if ((!live || moved) && Date.now() >= nextLiveFetch) fetchNearby();
+    if (!live) return;
+  }
+  const list = outside ? live.shops : shops;
+  const filter = openOnly && !outside;
   const now = sydneyNow();
   const lawClosed = closedByLaw(now);
   let best = null, bestD = Infinity;
-  for (const s of shops) {
-    if (openOnly && (lawClosed || !isOpen(s, now))) continue;
+  for (const s of list) {
+    if (filter && (lawClosed || !isOpen(s, now))) continue;
     const d = metres(here.lat, here.lon, s.lat, s.lon);
     if (d < bestD) { bestD = d; best = s; }
   }
@@ -153,7 +231,7 @@ function pickTarget() {
     nameEl.textContent = needsTap ? "Tap to start" : best.name;
   } else {
     distEl.textContent = "—";
-    nameEl.textContent = "Nothing open";
+    nameEl.textContent = outside ? "None nearby" : "Nothing open";
   }
 }
 
@@ -164,7 +242,7 @@ function screenAngle() {
 }
 
 function onHeading(magnetic) {
-  const h = rad(magnetic + DECLINATION);
+  const h = rad(magnetic + decl);
   if (heading === null) { hx = Math.cos(h); hy = Math.sin(h); }
   hx += (Math.cos(h) - hx) * 0.25;
   hy += (Math.sin(h) - hy) * 0.25;
@@ -216,6 +294,7 @@ function startLocation() {
   navigator.geolocation.watchPosition(
     (pos) => {
       here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      decl = declination(here.lat, here.lon);
       pickTarget();
     },
     (err) => {

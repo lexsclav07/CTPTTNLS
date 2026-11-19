@@ -1,8 +1,10 @@
 # Bottlo Compass
 
 A compass that points to the nearest **open** bottle shop. No map, just an
-arrow, the distance and the shop's name. Covers Greater Sydney, the Central
-Coast, Newcastle, Lake Macquarie, Maitland, Port Stephens and the lower Hunter.
+arrow, the distance and the shop's name. Opening hours work across Greater
+Sydney, the Central Coast, Newcastle, Lake Macquarie, Maitland, Port Stephens
+and the lower Hunter. Anywhere else in Australia (or the world) it still points
+to the nearest bottle shop, just without the open/closed filter.
 
 **Live:** https://lexsclav07.github.io/CTPTTNLS/
 
@@ -20,11 +22,11 @@ Everything runs in the browser. It doesn't call any paid API.
 | | |
 |---|---|
 | Your position | Browser geolocation (GPS) |
-| Your heading | Phone compass (`deviceorientation`), corrected by +12.8° for the magnetic declination around Sydney/Newcastle |
-| Shop list | `data/shops.json`, about 1,700 shops, rebuilt daily by GitHub Actions |
+| Your heading | Phone compass (`deviceorientation`), corrected from magnetic to true north using a WMM2025 declination table for Australia (+12.8° in Sydney, −1.5° in Perth) |
+| Shop list | `data/shops.json`, about 1,700 shops, rebuilt daily by GitHub Actions. Outside that area, shops within 15 km (or 80 km) are looked up live from OpenStreetMap's free Overpass API |
 | Open or closed | Real hours where OpenStreetMap has them (~150 shops). Otherwise it assumes **Mon–Wed 10–8, Thu–Sat 10–9, Sun 10–7**. Everything is treated as closed on Good Friday and Christmas Day, when NSW bottle shops can't trade |
 
-Change the default hours or the declination at the top of `app.js`.
+Change the default hours at the top of `app.js`.
 
 ## Data
 
