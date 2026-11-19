@@ -1,23 +1,70 @@
+/* Styled after Apple's Human Interface Guidelines: iOS system colours that
+   follow Light/Dark Mode, SF type that scales with the phone's text size,
+   an inset grouped list, 8-pt spacing, and motion that respects Reduce Motion. */
+
 :root {
-  --bg: #0d0d0f;
-  --fg: #f4f1ea;
-  --muted: rgba(244, 241, 234, 0.6);
-  --faint: rgba(244, 241, 234, 0.14);
-  --amber: #ffb340;
-  --green: #5ee08a;
-  --red: #ff5a4e;
-  color-scheme: dark;
+  color-scheme: light dark;
+
+  /* iOS semantic colours, light appearance */
+  --bg: #ffffff;                              /* systemBackground */
+  --group-bg: #f2f2f7;                        /* secondarySystemBackground */
+  --label: #000000;
+  --label-2: rgba(60, 60, 67, 0.6);           /* secondaryLabel */
+  --label-3: rgba(60, 60, 67, 0.3);           /* tertiaryLabel */
+  --separator: rgba(60, 60, 67, 0.29);
+  --fill: rgba(120, 120, 128, 0.2);           /* systemFill */
+  --faint-arrow: rgba(60, 60, 67, 0.22);
+
+  --green: #34c759;
+  --yellow: #ffcc00;
+  --orange: #ff9500;
+  --red: #ff3b30;
+  --accent: #ff9500;                          /* arrow colour before the compass wakes up */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --group-bg: #1c1c1e;
+    --label: #ffffff;
+    --label-2: rgba(235, 235, 245, 0.6);
+    --label-3: rgba(235, 235, 245, 0.3);
+    --separator: rgba(84, 84, 88, 0.6);
+    --fill: rgba(120, 120, 128, 0.36);
+    --faint-arrow: rgba(235, 235, 245, 0.24);
+
+    --green: #30d158;
+    --yellow: #ffd60a;
+    --orange: #ff9f0a;
+    --red: #ff453a;
+    --accent: #ff9f0a;
+  }
+}
+
+/* Increase Contrast */
+@media (prefers-contrast: more) {
+  :root { --label-2: rgba(60, 60, 67, 0.8); --label-3: rgba(60, 60, 67, 0.55); --faint-arrow: rgba(60, 60, 67, 0.42); }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root { --label-2: rgba(235, 235, 245, 0.8); --label-3: rgba(235, 235, 245, 0.55); --faint-arrow: rgba(235, 235, 245, 0.45); }
 }
 
 * { box-sizing: border-box; margin: 0; }
 
+/* -apple-system-body makes 1rem follow the iPhone's Text Size setting
+   (17 pt by default); everything below is sized in rem from that. */
+html {
+  font: -apple-system-body;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
 html, body {
   min-height: 100%;
   background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--label);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
   user-select: none;
   -webkit-user-select: none;
@@ -30,10 +77,19 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(12px, 2.6vh, 28px);
-  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
-  position: relative;
+  gap: 24px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
+
+/* Arrive gently rather than pop in. */
+@keyframes arrive {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+main > * { animation: arrive 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+main > :nth-child(2) { animation-delay: 0.06s; }
+main > :nth-child(3) { animation-delay: 0.12s; }
 
 /* ---------- compass ---------- */
 
@@ -41,7 +97,7 @@ main {
   position: relative;
   overflow: hidden; /* the dial is a square that rotates; keep its corners from widening the page */
   border-radius: 50%;
-  width: min(100%, 46vh, 440px);
+  width: min(100%, 44vh, 400px);
   aspect-ratio: 1;
 }
 
@@ -53,8 +109,8 @@ main {
 }
 .dial { will-change: transform; }
 
-.dial line { stroke: var(--faint); stroke-width: 0.6; stroke-linecap: round; }
-.dial line.major { stroke: var(--muted); stroke-width: 0.9; }
+.dial line { stroke: var(--label-3); stroke-width: 0.5; stroke-linecap: round; }
+.dial line.major { stroke: var(--label-2); stroke-width: 0.8; }
 
 .north {
   fill: var(--red);
@@ -64,10 +120,11 @@ main {
   font-family: inherit;
 }
 
-.arrows .other { fill: var(--fg); fill-opacity: 0.22; }
+.arrows .other { fill: var(--faint-arrow); }
+.arrows .main { fill: var(--accent); } /* coloured by heading from app.js */
+.arrows .hub { fill: var(--label); }
+.idle .arrows .main { fill: var(--fill); }
 
-.arrows .main { fill: var(--amber); } /* coloured by heading from app.js */
-.arrows .hub { fill: var(--fg); }
 .lbl text {
   font-family: inherit;
   text-anchor: middle;
@@ -77,55 +134,86 @@ main {
   stroke-width: 1.3px;
   stroke-linejoin: round;
 }
-.lbl .k { font-size: 4px; font-weight: 700; fill: var(--fg); fill-opacity: 0.85; }
-.lbl .b { font-size: 3.6px; font-weight: 500; fill: var(--fg); fill-opacity: 0.6; font-variant-numeric: tabular-nums; }
+.lbl .k { font-size: 4px; font-weight: 600; fill: var(--label); }
+.lbl .b { font-size: 3.6px; font-weight: 400; fill: var(--label-2); font-variant-numeric: tabular-nums; }
 .main-lbl .k { font-size: 3.6px; }
-.main-lbl .b { font-size: 4.4px; font-weight: 700; fill: var(--amber); fill-opacity: 1; }
-
-.idle .arrows .main { fill: var(--faint); }
+.main-lbl .b { font-size: 4.4px; font-weight: 600; fill: var(--accent); }
 
 /* ---------- readout ---------- */
 
 .readout { text-align: center; max-width: 100%; }
 
 .dist {
-  font-size: clamp(44px, 14vw, 80px);
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1;
+  font-size: 3.5rem;           /* ~60 pt hero number, like the Compass app's heading */
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 .dist:empty { display: none; }
 
 .name {
-  margin-top: 8px;
-  font-size: clamp(17px, 4.6vw, 22px);
-  color: var(--muted);
+  margin-top: 4px;
+  font-size: 1.18rem;          /* Title 3, 20 pt */
+  font-weight: 600;
+  color: var(--label);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.idle .name, .name.status { font-weight: 400; color: var(--label-2); }
 
-/* ---------- next five ---------- */
+/* ---------- next five: inset grouped list ---------- */
 
 .others {
   list-style: none;
-  padding: 0;
-  width: min(100%, 360px);
-  font-size: clamp(13px, 3.6vw, 15px);
-  color: var(--muted);
-  opacity: 0.75;
+  width: min(100%, 420px);
+  padding: 0 0 0 16px;
+  border-radius: 12px;
+  background: var(--group-bg);
+  font-size: 0.882rem;         /* Subheadline, 15 pt */
 }
+.others:empty { display: none; }
+
 .others li {
   display: flex;
+  align-items: center;
   gap: 12px;
-  justify-content: space-between;
-  padding: 3px 0;
+  min-height: 2.6em;
 }
-.others .i { flex: none; width: 1.1em; font-weight: 650; font-variant-numeric: tabular-nums; }
+.others .i {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--fill);
+  font-size: 0.75rem;          /* Caption 1 */
+  font-weight: 600;
+  line-height: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Separators start at the text, not the screen edge, as in iOS lists. */
+.others .row {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 16px;
+  border-bottom: 0.5px solid var(--separator);
+}
+.others li:last-child .row { border-bottom: 0; }
 .others .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.others .d { flex: none; font-variant-numeric: tabular-nums; }
+.others .d { flex: none; color: var(--label-2); font-variant-numeric: tabular-nums; }
 
 /* ---------- misc ---------- */
 
 .idle { cursor: pointer; }
+
+/* Reduce Motion: keep fades, drop the scaling. app.js also stiffens the springs. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
+  main > * { animation-duration: 0.3s; }
+}
