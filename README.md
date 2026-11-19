@@ -13,7 +13,10 @@ On your phone, open the link and allow location (and motion on iPhone: tap
 once when it says *Tap to start*). Add it to your home screen and it opens
 full-screen like an app.
 
-The main arrow turns green when you're facing the shop.
+- The main arrow is green when you're facing the shop and shades through
+  yellow and orange to red when it's behind you.
+- Every arrow shows the shop's compass bearing (degrees from true north). The
+  faint arrows are numbered to match the list.
 
 ## How it works
 
