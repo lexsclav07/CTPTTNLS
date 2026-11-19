@@ -116,13 +116,13 @@ async function overpassAround({ lat, lon }, radius) {
 async function fetchNearby() {
   nextLiveFetch = Infinity; // one lookup at a time
   const at = { ...here };
-  if (!live) { distEl.textContent = ""; nameEl.textContent = "Searching…"; }
+  if (!live) { distEl.textContent = ""; status("Searching…"); }
   try {
     let found = await overpassAround(at, 15000);
     if (!found.length) found = await overpassAround(at, 80000); // country towns
     live = { ...at, shops: found };
   } catch {
-    if (!live) nameEl.textContent = "No signal";
+    if (!live) status("No signal");
     return;
   } finally {
     nextLiveFetch = Date.now() + 30000;
@@ -155,20 +155,23 @@ function pickTargets() {
 
   if (best.length) {
     distEl.textContent = needsTap ? "" : formatDistance(best[0].d);
-    nameEl.textContent = needsTap ? "Tap to start" : best[0].shop.name;
+    if (needsTap) status("Tap to start"); else showShop(best[0].shop);
   } else {
     distEl.textContent = "";
-    nameEl.textContent = "None nearby";
+    status("None nearby");
   }
 
   // The next five, smaller, under the main readout.
   othersEl.replaceChildren(...best.slice(1).map(({ shop, d }, i) => {
     const li = document.createElement("li");
-    const k = document.createElement("span"), n = document.createElement("span"), m = document.createElement("span");
+    const k = document.createElement("span"), row = document.createElement("span");
+    const n = document.createElement("span"), m = document.createElement("span");
     k.className = "i"; k.textContent = i + 1; // same number as its arrow
+    row.className = "row";
     n.className = "n"; n.textContent = shop.name;
     m.className = "d"; m.textContent = formatDistance(d);
-    li.append(k, n, m);
+    row.append(n, m);
+    li.append(k, row);
     return li;
   }));
 }
@@ -203,12 +206,78 @@ function startCompass() {
   }
 }
 
+// ----------------------------------------------------------------- motion --
+// Apple-style springs: SwiftUI's default (response 0.55 s, damping 0.825)
+// for anything that turns. With Reduce Motion on, a quick spring with no
+// overshoot and no "pop".
+
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const TURN = { k: 130, c: 18.9 }, TURN_REDUCED = { k: 400, c: 40 };
+const POP = { k: 320, c: 13 };   // a little bouncy, for the "you're facing it" pop
+const vel = new Array(ARROWS).fill(0);
+let dialVel = 0, pop = 1, popVel = 0, lastFrame = 0;
+
+function spring(x, v, target, dt, { k, c }) {
+  for (let t = 0; t < dt; t += 1 / 120) { // small steps keep it stable on slow frames
+    const h = Math.min(1 / 120, dt - t);
+    v += (-k * (x - target) - c * v) * h;
+    x += v * h;
+  }
+  return [x, v];
+}
+
+let shownShop = null; // the shop whose name is showing
+
+function status(text) {
+  nameEl.classList.add("status");
+  nameEl.textContent = text;
+  shownShop = null;
+}
+
+// Cross-fade the name when the nearest shop changes.
+function showShop(shop) {
+  if (shop === shownShop) return;
+  const first = shownShop === null;
+  shownShop = shop;
+  nameEl.classList.remove("status");
+  nameEl.textContent = shop.name;
+  if (first || !nameEl.animate) return;
+  nameEl.animate(reduceMotion.matches
+    ? [{ opacity: 0 }, { opacity: 1 }]
+    : [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }],
+  { duration: reduceMotion.matches ? 200 : 350, easing: "cubic-bezier(0.2, 0.9, 0.25, 1)" });
+}
+
+// Main arrow colour runs through the iOS system colours (they differ in Light
+// and Dark Mode, so read them from the CSS).
+let palette = [];
+function readPalette() {
+  const css = getComputedStyle(document.documentElement);
+  palette = ["--green", "--yellow", "--orange", "--red"].map((v) => {
+    const hex = css.getPropertyValue(v).trim().replace("#", "");
+    return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  });
+}
+function arrowColour(off) { // off: 0 = facing the shop, 180 = behind you
+  const x = (Math.min(off, 180) / 180) * (palette.length - 1), i = Math.min(Math.floor(x), palette.length - 2), f = x - i;
+  const c = palette[i].map((a, j) => Math.round(a + (palette[i + 1][j] - a) * f));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+for (const q of ["(prefers-color-scheme: dark)", "(prefers-contrast: more)"]) {
+  const mq = matchMedia(q);
+  if (mq.addEventListener) mq.addEventListener("change", readPalette); else mq.addListener(readPalette);
+}
+
 // ---------------------------------------------------------------- drawing --
 
-function frame() {
+function frame(now) {
+  const dt = Math.min((now - (lastFrame || now)) / 1000, 0.1);
+  lastFrame = now;
+  const turn = reduceMotion.matches ? TURN_REDUCED : TURN;
+
   // No compass (e.g. a laptop)? Draw it north-up so the arrows are still bearings.
   const h = heading ?? 0;
-  dialAngle += wrap180(-h - dialAngle) * 0.3;
+  [dialAngle, dialVel] = spring(dialAngle, dialVel, dialAngle + wrap180(-h - dialAngle), dt, turn);
   dialEl.style.transform = `rotate(${dialAngle}deg)`;
 
   for (let i = 0; i < ARROWS; i++) {
@@ -217,8 +286,10 @@ function frame() {
     if (!t) { angles[i] = null; continue; }
     const b = bearing(here.lat, here.lon, t.shop.lat, t.shop.lon);
     const want = b - h;
-    angles[i] = angles[i] === null ? want : angles[i] + wrap180(want - angles[i]) * 0.3;
-    arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)`);
+    if (angles[i] === null) { angles[i] = want; vel[i] = 0; }
+    [angles[i], vel[i]] = spring(angles[i], vel[i], angles[i] + wrap180(want - angles[i]), dt, turn);
+    const scale = i === 0 && pop !== 1 ? ` translate(50 50) scale(${pop.toFixed(4)}) translate(-50 -50)` : "";
+    arrowEls[i].setAttribute("transform", `rotate(${angles[i].toFixed(2)} 50 50)${scale}`);
     bearings[i] = Math.round(b) % 360;
   }
 
@@ -228,13 +299,18 @@ function frame() {
   // to red when it's behind you.
   const facing = heading !== null && angles[0] !== null;
   const off = facing ? Math.abs(wrap180(angles[0])) : 0;
-  const colour = facing ? `hsl(${Math.round(140 * (1 - off / 180))}, 80%, 56%)` : "";
+  const colour = facing ? arrowColour(off) : "";
   arrowEls[0].style.fill = colour;
   bearingEls[0].style.fill = colour;
 
   const on = facing && off < ON_TARGET_DEG;
-  if (on && !wasOnTarget && navigator.vibrate) navigator.vibrate(25);
+  if (on && !wasOnTarget) {
+    if (navigator.vibrate) navigator.vibrate(25);
+    if (!reduceMotion.matches) popVel += 1.1; // a small "got it" pop
+  }
   wasOnTarget = on;
+  [pop, popVel] = spring(pop, popVel, 1, dt, POP);
+  if (Math.abs(pop - 1) < 1e-4 && Math.abs(popVel) < 1e-3) { pop = 1; popVel = 0; }
 
   requestAnimationFrame(frame);
 }
@@ -306,8 +382,8 @@ function placeLabels() {
 // --------------------------------------------------------------- location --
 
 function startLocation() {
-  if (!navigator.geolocation) { nameEl.textContent = "No location"; return; }
-  nameEl.textContent = "Locating…";
+  if (!navigator.geolocation) { status("No location"); return; }
+  status("Locating…");
   navigator.geolocation.watchPosition(
     (pos) => {
       here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
@@ -318,7 +394,7 @@ function startLocation() {
       if (err.code === err.PERMISSION_DENIED) {
         locationOff = true;
         distEl.textContent = "";
-        nameEl.textContent = "Location off";
+        status("Location off");
       }
     },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
@@ -342,7 +418,7 @@ function askForCompass() {
   app.classList.remove("idle");
   try { DeviceOrientationEvent.requestPermission().catch(() => {}); } catch {}
   keepAwake();
-  if (here) pickTargets(); else nameEl.textContent = locationOff ? "Location off" : "Locating…";
+  if (here) pickTargets(); else status(locationOff ? "Location off" : "Locating…");
 }
 
 async function load() {
@@ -356,13 +432,14 @@ async function load() {
     if (major) l.setAttribute("class", "major");
     if (i !== 0) ticks.appendChild(l); // the N sits here
   }
+  readPalette();
   requestAnimationFrame(frame);
 
   try {
     const res = await fetch("data/shops.json", { cache: "no-cache" });
     shops = (await res.json()).shops.map(([lat, lon, name]) => ({ lat, lon, name }));
   } catch {
-    nameEl.textContent = "Couldn't load shops";
+    status("Couldn't load shops");
     return;
   }
 
@@ -377,7 +454,7 @@ async function load() {
     if (heading === null && canAsk) {
       needsTap = true;
       app.classList.add("idle");
-      if (here) pickTargets(); else if (!locationOff) nameEl.textContent = "Tap to start";
+      if (here) pickTargets(); else if (!locationOff) status("Tap to start");
       app.addEventListener("click", () => { if (needsTap) askForCompass(); });
     } else {
       app.classList.remove("idle");

@@ -6,9 +6,11 @@
   <title>Bottlo Compass</title>
   <meta name="description" content="A compass that points to the nearest bottle shops.">
   <meta name="author" content="Lex Sclavos">
-  <meta name="theme-color" content="#0d0d0f">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Bottlo">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -47,9 +49,9 @@
       </svg>
     </div>
 
-    <div class="readout" aria-live="polite">
+    <div class="readout">
       <div id="dist" class="dist"></div>
-      <div id="name" class="name">Loading…</div>
+      <div id="name" class="name status" aria-live="polite">Loading…</div>
     </div>
 
     <ol id="others" class="others" aria-label="Next closest"></ol>
