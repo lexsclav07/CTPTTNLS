@@ -1,0 +1,59 @@
+name: Refresh shops & deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 17 * * *" # daily, ~4:37am Sydney time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh bottle shop list
+        if: github.event_name != 'push'
+        continue-on-error: true # a flaky data source shouldn't stop the deploy
+        run: |
+          pip install --quiet openpyxl
+          python3 scripts/update_shops.py
+
+      # Only commits when the shop list actually changed. It's authored as the
+      # repo owner (GitHub no-reply address) so the refresh counts on your
+      # contribution graph; delete these two git config lines to commit as
+      # github-actions[bot] instead.
+      - name: Commit updated list
+        if: github.event_name != 'push'
+        run: |
+          git add data/
+          if git diff --cached --quiet; then echo "No changes."; exit 0; fi
+          git config user.name "${{ github.repository_owner }}"
+          git config user.email "${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com"
+          git commit -m "Refresh bottle shop list"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
