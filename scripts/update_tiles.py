@@ -27,25 +27,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import update_shops as u  # noqa: E402
 
 AUSTRALIA = (-44.0, 112.5, -9.5, 154.0)  # south, west, north, east: mainland + Tasmania
-STEP = 4.0                               # ask in 4-degree boxes; split further if a server chokes
 OSM_KIND = {"pub": "p", "bar": "b", "nightclub": "c"}
 
 
-def query(bbox):
+def query(bbox, seconds):
     s, w, n, e = bbox
     b = f"({s},{w},{n},{e})"
-    return (f'[out:json][timeout:180];(nwr["shop"~"^(alcohol|wine)$"]{b};'
+    return (f'[out:json][timeout:{seconds}];(nwr["shop"~"^(alcohol|wine)$"]{b};'
             f'nwr["amenity"~"^(pub|bar|nightclub)$"]["name"]{b};);out center tags;')
 
 
 def fetch(bbox, depth=0):
-    """Everything in bbox; on failure try the next server, then quarter the box."""
+    """Everything in bbox. Ask for it all at once (one request is far quicker than
+    many on a busy server); if that fails, try the next server, then quarters."""
+    seconds = 600 if depth == 0 else 180
     endpoints = [os.environ["OVERPASS_URL"]] if os.environ.get("OVERPASS_URL") else u.OVERPASS
     last = None
     for url in endpoints:
         for attempt in range(3):
             try:
-                body = json.loads(u.get(url, urllib.parse.urlencode({"data": query(bbox)}).encode(), timeout=200))
+                body = json.loads(u.get(url, urllib.parse.urlencode({"data": query(bbox, seconds)}).encode(),
+                                        timeout=seconds + 60))
                 if re.search(r"error|timed out|out of memory", body.get("remark", ""), re.I):
                     raise RuntimeError(body["remark"])
                 return body["elements"]
@@ -56,7 +58,7 @@ def fetch(bbox, depth=0):
                     time.sleep(30)  # rate limited: wait our turn
                     continue
                 break
-    if depth >= 3:
+    if depth >= 4:
         raise last
     s, w, n, e = bbox
     mlat, mlon = (s + n) / 2, (w + e) / 2
@@ -92,31 +94,17 @@ def tile_key(lat, lon):
 
 def main():
     out_dir = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else u.DATA / "tiles"
-    s0, w0, n0, e0 = AUSTRALIA
-    boxes = []
-    lat = s0
-    while lat < n0:
-        lon = w0
-        while lon < e0:
-            boxes.append((lat, lon, min(lat + STEP, n0), min(lon + STEP, e0)))
-            lon += STEP
-        lat += STEP
-
+    elements = fetch(AUSTRALIA)  # any failure ends the run before anything is written
     seen, tiles = set(), {}
-    for i, box in enumerate(boxes, 1):
-        elements = fetch(box)  # any failure ends the run before anything is written
-        added = 0
-        for el in elements:
-            key = (el["type"], el["id"])
-            if key in seen:
-                continue  # boxes share their edges
-            seen.add(key)
-            p = place(el)
-            if p:
-                tiles.setdefault(tile_key(p[0], p[1]), []).append(p)
-                added += 1
-        print(f"box {i}/{len(boxes)} {box}: {added} places")
-        time.sleep(1)  # be polite to the free servers
+    for el in elements:
+        key = (el["type"], el["id"])
+        if key in seen:
+            continue  # split boxes share their edges
+        seen.add(key)
+        p = place(el)
+        if p:
+            tiles.setdefault(tile_key(p[0], p[1]), []).append(p)
+    print(f"downloaded {len(seen)} OpenStreetMap objects")
 
     # The same place mapped twice (a point and a building outline): keep one.
     for key, places in tiles.items():

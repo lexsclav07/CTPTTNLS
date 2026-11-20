@@ -177,7 +177,10 @@ async function tilesAround({ lat, lon }) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (tileIndex[`${ty + dy}_${tx + dx}`]) keys.push(`${ty + dy}_${tx + dx}`);
     }
-    found = (await Promise.all(keys.map(loadTile))).flat();
+    // Use whatever squares arrived; one failed download shouldn't sink the rest.
+    const got = await Promise.allSettled(keys.map(loadTile));
+    if (keys.length && got.every((g) => g.status === "rejected")) throw got[0].reason;
+    found = got.flatMap((g) => (g.status === "fulfilled" ? g.value : []));
     if (found.filter((p) => kinds.has(p.kind)).length > ARROWS || found.length > 6000) break;
   }
   return found;
