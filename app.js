@@ -713,7 +713,7 @@ const SENSORS = [
     ["Picked by you", () => yesNo(!!pinned)],
   ]],
   ["Data", [
-    ["Source", () => (here && !inRegion(here) ? "OpenStreetMap (live)" : "Built-in list")],
+    ["Source", () => (here && !inRegion(here) ? live?.source ?? (lookupFailed ? "unreachable" : "loading") : "Built-in list")],
     ["Places loaded", () => String(here && !inRegion(here) ? live?.shops.length ?? 0 : shops.length)],
     ["List updated", () => raw.extra.updated || "—"],
     ["Showing", () => [...kinds].map((k) => ({ s: "bottle shops", p: "pubs", b: "bars", c: "clubs" }[k])).join(", ")],
