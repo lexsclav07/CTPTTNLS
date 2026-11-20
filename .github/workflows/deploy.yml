@@ -56,6 +56,8 @@ jobs:
           git config user.name "${{ github.repository_owner }}"
           git config user.email "${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com"
           git commit -m "Refresh bottle shop list"
+          # someone may have pushed while this ran; data commits rebase cleanly on top
+          git pull --rebase origin main
           git push
 
       - name: Cache-bust scripts and styles
