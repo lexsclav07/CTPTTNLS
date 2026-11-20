@@ -21,8 +21,8 @@ const DECLINATION_GRID = [
   [0.8, 0.9, 0.9, 1.1, 1.6, 2.6, 3.8, 5.1, 6.4, 7.7],
 ];
 
-// data/shops.json covers this box (Sydney, Central Coast, Newcastle, Hunter).
-// Anywhere else, shops are looked up live from OpenStreetMap.
+// data/places.json covers this box (Sydney, Central Coast, Newcastle, Hunter);
+// the rest of Australia comes from data/tiles/, and overseas from OpenStreetMap live.
 const REGION = { s: -34.25, w: 150.4, n: -32.5, e: 152.3 };
 const OVERPASS = [
   "https://overpass-api.de/api/interpreter",
@@ -41,7 +41,7 @@ const distEl = $("dist"), nameEl = $("name"), othersEl = $("others"), hintEl = $
 // off, an app's built-in browser, a bug), say so under the name, with the fix.
 // Several can be true at once; the most important one shows, and each kind
 // clears itself once the problem goes away.
-const HINT_ORDER = ["error", "location", "compass", "precise", "inapp"];
+const HINT_ORDER = ["error", "location", "network", "compass", "precise", "inapp"];
 const hints = {};
 let hintKind = null;
 function showHint() {
@@ -137,19 +137,59 @@ function declination(lat, lon) {
 }
 
 // ------------------------------------------------- shops outside the list --
+// Outside the built-in area, places come from the Australia-wide tiles the
+// daily update builds (1-degree squares served from this site: quick, and
+// they don't depend on anyone else's server). Overseas - or if the tiles
+// can't be loaded - ask OpenStreetMap live, starting small so a busy server
+// still answers quickly.
 
 const inRegion = ({ lat, lon }) => lat >= REGION.s && lat <= REGION.n && lon >= REGION.w && lon <= REGION.e;
 
+async function getJson(url, ms) {
+  const res = await fetch(url, AbortSignal.timeout ? { signal: AbortSignal.timeout(ms) } : {});
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+let tileIndex;              // {"-38_144": number of places, ...}; null if it can't be had
+const tileCache = new Map(); // tile -> Promise of its places
+
+function loadTile(key) {
+  if (!tileCache.has(key)) {
+    tileCache.set(key, getJson(`data/tiles/${key}.json`, 20000)
+      .then((rows) => rows.map(([lat, lon, name, kind]) => ({ lat, lon, name, kind })))
+      .catch((err) => { tileCache.delete(key); throw err; }));
+  }
+  return tileCache.get(key);
+}
+
+// The 3 x 3 squares around you (about 300 km across), widening in the bush
+// until there's enough to point at. [] = no tiles near you (overseas).
+async function tilesAround({ lat, lon }) {
+  if (tileIndex === undefined) {
+    try { tileIndex = (await getJson("data/tiles/index.json", 15000)).tiles; } catch { tileIndex = null; }
+  }
+  if (!tileIndex) return null;
+  const ty = Math.floor(lat), tx = Math.floor(lon);
+  let found = [];
+  for (let r = 1; r <= 4; r++) {
+    const keys = [];
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (tileIndex[`${ty + dy}_${tx + dx}`]) keys.push(`${ty + dy}_${tx + dx}`);
+    }
+    found = (await Promise.all(keys.map(loadTile))).flat();
+    if (found.filter((p) => kinds.has(p.kind)).length > ARROWS || found.length > 6000) break;
+  }
+  return found;
+}
+
 async function overpassAround({ lat, lon }, radius) {
   const near = `(around:${radius},${lat},${lon})`;
-  const q = `[out:json][timeout:25];(nwr["shop"~"^(alcohol|wine)$"]${near};nwr["amenity"~"^(pub|bar|nightclub)$"]["name"]${near};);out center tags;`;
+  const q = `[out:json][timeout:20];(nwr["shop"~"^(alcohol|wine)$"]${near};nwr["amenity"~"^(pub|bar|nightclub)$"]["name"]${near};);out center tags;`;
   let lastErr;
   for (const url of OVERPASS) {
     try {
-      const res = await fetch(`${url}?data=${encodeURIComponent(q)}`,
-        AbortSignal.timeout ? { signal: AbortSignal.timeout(25000) } : {});
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()).elements.map((el) => {
+      return (await getJson(`${url}?data=${encodeURIComponent(q)}`, 15000)).elements.map((el) => {
         const t = el.tags || {};
         let name = t.name || t.brand || "Bottle shop";
         if (t.branch && !name.toLowerCase().includes(t.branch.toLowerCase())) name += ` ${t.branch}`;
@@ -161,19 +201,31 @@ async function overpassAround({ lat, lon }, radius) {
   throw lastErr;
 }
 
+let lookupFailed = false;
 async function fetchNearby() {
   nextLiveFetch = Infinity; // one lookup at a time
   const at = { ...here };
-  if (!live) { distEl.textContent = ""; status("Searching…"); }
+  if (!live && !lookupFailed) { distEl.textContent = ""; status("Searching…"); }
   try {
-    let found = await overpassAround(at, 15000);
-    if (!found.length) found = await overpassAround(at, 80000); // country towns
-    live = { ...at, shops: found };
+    let found = await tilesAround(at).catch(() => null), source = "Australia-wide list";
+    if (!found || !found.length) {
+      source = "OpenStreetMap (live)";
+      for (const radius of [4000, 20000, 80000]) { // small first: quick even when servers are busy
+        found = await overpassAround(at, radius);
+        if (found.length) break;
+      }
+    }
+    live = { ...at, shops: found, source };
+    lookupFailed = false;
+    clearHint("network");
   } catch {
+    lookupFailed = true;
     if (!live) status("No signal");
+    hint("network", "Couldn't reach the map server for places near you. It tries again every 30 seconds; " +
+      "busy servers usually answer within a minute or two.");
     return;
   } finally {
-    nextLiveFetch = Date.now() + 30000;
+    nextLiveFetch = Date.now() + (lookupFailed ? 30000 : 2000);
   }
   pickTargets();
 }

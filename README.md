@@ -35,7 +35,7 @@ Everything runs in the browser. It doesn't call any paid API.
 |---|---|
 | Your position | Browser geolocation (GPS) |
 | Your heading | Phone compass (`deviceorientation`), corrected from magnetic to true north using a WMM2025 declination table for Australia (+12.8° in Sydney, −1.5° in Perth) |
-| Shop list | `data/shops.json`, about 1,700 shops, rebuilt daily by GitHub Actions. Outside that area, shops within 15 km (or 80 km) are looked up live from OpenStreetMap's free Overpass API |
+| Places | Sydney, Central Coast, Newcastle and the Hunter: `data/places.json` (NSW licences + OpenStreetMap). The rest of Australia: `data/tiles/`, every bottle shop, pub, bar and club on OpenStreetMap cut into 1° squares, so the app only downloads the few around you (`scripts/update_tiles.py`). All rebuilt daily by GitHub Actions. Overseas, places are looked up live from OpenStreetMap's free Overpass API |
 
 ## Data
 
