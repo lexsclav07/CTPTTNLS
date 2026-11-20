@@ -37,6 +37,13 @@ jobs:
           python3 scripts/update_shops.py
           python3 scripts/update_places.py
 
+      # Bottle shops, pubs, bars and clubs for all of Australia, in 1-degree tiles.
+      - name: Refresh Australia-wide tiles
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh)
+        continue-on-error: true
+        timeout-minutes: 25
+        run: python3 scripts/update_tiles.py
+
       # Only commits when the shop list actually changed. It's authored as the
       # repo owner (GitHub no-reply address) so the refresh counts on your
       # contribution graph; delete these two git config lines to commit as
@@ -62,7 +69,8 @@ jobs:
             mkdir -p test
             git archive FETCH_HEAD | tar -x -C test
             rm -rf test/.github test/scripts test/data/sources
-            cp data/shops.json test/data/shops.json
+            cp data/shops.json data/places.json test/data/
+            rm -rf test/data/tiles && cp -r data/tiles test/data/tiles
             sed -i "s/?v=dev/?v=test-$(git rev-parse --short FETCH_HEAD)/g" test/index.html
           fi
 
