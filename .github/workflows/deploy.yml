@@ -70,7 +70,7 @@ jobs:
             git archive FETCH_HEAD | tar -x -C test
             rm -rf test/.github test/scripts test/data/sources
             cp data/shops.json data/places.json test/data/
-            rm -rf test/data/tiles && cp -r data/tiles test/data/tiles
+            if [ -d data/tiles ]; then rm -rf test/data/tiles && cp -r data/tiles test/data/tiles; fi
             sed -i "s/?v=dev/?v=test-$(git rev-parse --short FETCH_HEAD)/g" test/index.html
           fi
 
