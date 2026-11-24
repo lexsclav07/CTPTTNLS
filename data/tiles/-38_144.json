@@ -561,7 +561,7 @@
 [-37.80595, 144.89335, "Mona Castle Hotel", "p"],
 [-37.80595, 144.9582, "Central Club Hotel", "p"],
 [-37.80594, 144.98292, "UBQ Upstairs", "b"],
-[-37.80591, 144.95793, "Cellarbrations At Victoria Market", "s"],
+[-37.80591, 144.95793, "Duncan's", "s"],
 [-37.80591, 144.9833, "Caz Reitop's Dirty Secrets", "b"],
 [-37.8059, 144.89206, "Seddon Wine Store", "b"],
 [-37.80583, 144.98274, "Yah Yah's", "b"],
@@ -998,7 +998,6 @@
 [-37.74237, 144.96536, "Liquorland", "s"],
 [-37.74149, 144.96678, "Browns Corner Hotel", "p"],
 [-37.74085, 144.96289, "The Great Beyond", "s"],
-[-37.73948, 144.9455, "Bar Tobalá", "b"],
 [-37.7394, 144.82455, "The Bottle-O Kealba", "s"],
 [-37.73755, 144.96639, "Thirsty Camel", "s"],
 [-37.7375, 144.96653, "Drums Hotel", "p"],
@@ -1159,6 +1158,7 @@
 [-37.10722, 144.061, "Crown Hotel", "p"],
 [-37.10309, 144.33201, "Elphinstone Hotel", "p"],
 [-37.09526, 144.20333, "Five Flags Hotel", "p"],
+[-37.08122, 144.25842, "The Red Hill Hotel", "p"],
 [-37.06693, 144.21958, "Hero", "p"],
 [-37.06657, 144.21945, "Love Shack Brewing", "p"],
 [-37.06631, 144.21882, "BWS Castlemaine", "s"],
@@ -1170,6 +1170,7 @@
 [-37.0568, 144.21476, "Shedshaker Brewing", "p"],
 [-37.05564, 144.21215, "The Bridge Hotel", "p"],
 [-37.04258, 144.79834, "Tooborac Hotel & Brewery", "p"],
+[-37.0223, 144.53203, "Redesdale Hotel", "p"],
 [-37.01806, 144.27062, "Harcourt Valley Vineyards", "s"],
 [-37.01667, 144.26792, "BlackJack Wines", "s"]
 ]
