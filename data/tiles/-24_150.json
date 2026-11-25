@@ -1,17 +1,16 @@
 [
 [-23.7142, 150.8149, "Raglan tavern", "b"],
 [-23.67877, 150.71078, "Railway Hotel", "p"],
-[-23.64486, 150.38715, "Bottlemart", "s"],
+[-23.64486, 150.38715, "Bottle shop", "s"],
 [-23.626, 150.15604, "Westwood Hotel", "p"],
+[-23.57151, 150.4688, "Bouldercombe Pub", "p"],
 [-23.46359, 150.39983, "Kabra Hotel", "p"],
-[-23.43684, 150.45564, "Star Liquor Gracemere", "s"],
 [-23.43403, 150.45456, "Gracemere Hotel", "p"],
 [-23.39576, 150.50535, "Star", "s"],
 [-23.39029, 150.50297, "Liquorland", "s"],
 [-23.3895, 150.5026, "Allenstown Hotel", "p"],
 [-23.38901, 150.50219, "Dan Murphy's", "s"],
 [-23.3866, 150.50767, "Liquor Legends Highway A1", "s"],
-[-23.38199, 150.51096, "O'Dowd's Irish Pub", "p"],
 [-23.38133, 150.5089, "Bartletts Tavern", "p"],
 [-23.38001, 150.50211, "The Brunswick Hotel", "p"],
 [-23.37989, 150.51439, "Giddy Goat", "c"],
@@ -53,7 +52,7 @@
 [-23.1353, 150.36788, "Royal Oak Hotel", "p"],
 [-23.12964, 150.74893, "Strand Hotel", "p"],
 [-23.12956, 150.74373, "Bottle shop", "s"],
-[-23.12945, 150.74243, "Star Liquor Warehouse", "s"],
+[-23.12943, 150.74236, "Star Liquor Warehouse", "s"],
 [-23.12882, 150.74351, "Pacific Hotel", "p"],
 [-23.1288, 150.74254, "Railway Hotel", "p"]
 ]
