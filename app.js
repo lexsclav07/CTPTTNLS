@@ -87,6 +87,7 @@ let locationOff = false;
 let decl = 12.8;         // magnetic declination where you are
 let live = null;         // {lat, lon, shops} from OpenStreetMap when outside REGION
 let nextLiveFetch = 0;   // don't hammer the free API
+let tm = null;           // telemetry recorder; telemetry.js fills this in
 let pinned = null;       // a shop picked from the list, or null to follow the nearest
 let imperial = false;    // miles and feet instead of km and m
 let kinds = new Set("spbc"); // which kinds of place to point at
@@ -268,6 +269,7 @@ function pickTargets() {
     best.length = Math.min(best.length, ARROWS);
   }
   targets = best; // arrows whose shop changed swing over from where they were
+  if (tm) tm.target();
   if ($("nearest").hidden !== !pinned) $("nearest").hidden = !pinned;
 
   if (best.length) {
@@ -337,9 +339,11 @@ function onOrientation(e) {
   } else if (e.absolute && typeof e.alpha === "number") {
     mag = 360 - e.alpha + screenAngle(); // Android: alpha runs anticlockwise
   }
-  if (mag === null) return;
-  raw.mag = ((mag % 360) + 360) % 360;
-  onHeading(mag);
+  if (mag !== null) {
+    raw.mag = ((mag % 360) + 360) % 360;
+    onHeading(mag);
+  }
+  if (tm) tm.orientation(e, mag !== null);
 }
 const onMotion = (e) => { raw.motion = e; raw.motionCount++; }; // only listened to in landscape
 
@@ -447,6 +451,10 @@ function measureDial() {
 function frame(now) {
   const dt = Math.min((now - (lastFrame || now)) / 1000, 0.1);
   lastFrame = now;
+  if (tm) {
+    tm.frame(now);
+    if (tm.covering) { requestAnimationFrame(frame); return; } // compass is hidden under the graphs
+  }
   const turn = reduceMotion.matches ? TURN_REDUCED : TURN;
 
   // No compass (e.g. a laptop)? Draw it north-up so the arrows are still bearings.
@@ -579,6 +587,7 @@ function onPosition(pos) {
   } else clearHint("precise");
   decl = declination(here.lat, here.lon);
   pickTargets();
+  if (tm) tm.position(pos);
 }
 
 function onPositionError(err) {
@@ -775,11 +784,14 @@ function updateSensors() {
 }
 
 // Extras some browsers have (mostly Chrome on Android): battery, magnetometer, light.
+let extraStarted = false;
 function startExtraSensors() {
+  if (extraStarted) return;
+  extraStarted = true;
   if (navigator.getBattery) navigator.getBattery().then((b) => { raw.extra.battery = b; }).catch(() => {});
   for (const [name, key, onRead] of [
-    ["Magnetometer", "magErr", (s) => { raw.extra.mag = { x: s.x, y: s.y, z: s.z }; }],
-    ["AmbientLightSensor", "luxErr", (s) => { raw.extra.lux = s.illuminance; }],
+    ["Magnetometer", "magErr", (s) => { raw.extra.mag = { x: s.x, y: s.y, z: s.z }; if (tm) tm.extra("mag", raw.extra.mag); }],
+    ["AmbientLightSensor", "luxErr", (s) => { raw.extra.lux = s.illuminance; if (tm) tm.extra("light", s.illuminance); }],
   ]) {
     if (!(name in window)) { raw.extra[key] = "not available"; continue; }
     try {

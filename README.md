@@ -20,6 +20,12 @@ full-screen like an app.
 - Tap a shop in the list to point the main arrow at it instead. **‹ Nearest**
   (top left) goes back to the closest shop.
 - **km / mi** (top right) switches between metric and imperial distances.
+- **Telemetry** (the waveform button, top right) records every sensor the app
+  reads and graphs it live, a bit like phyphox: heading, tilt, acceleration,
+  gyroscope, GPS track, speed, altitude and accuracy, distance and angle to the
+  target, frame rate, plus magnetometer and light where the phone allows.
+  Pick 10 s, 30 s or the whole recording; it keeps recording if you close it
+  (red dot on the button). **Export** shares a .zip with one CSV per sensor.
 - The filter button (top right) picks which places to point at: bottle shops,
   pubs, bars and clubs (RSLs, leagues, bowling clubs and nightclubs), from NSW
   hotel, small bar and club licences plus OpenStreetMap
