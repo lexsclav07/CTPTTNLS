@@ -6,8 +6,8 @@
 // can record a walk and look at it afterwards. Export shares a .zip with one
 // CSV per sensor.
 //
-// Uses the app's globals from app.js: heading, raw, targets, bearings,
-// angles, wrap180, reduceMotion, $.
+// Uses the app's globals from app.js: heading, raw, here, targets, bearing,
+// wrap180, startExtraSensors, reduceMotion, $.
 
 (() => {
   // ------------------------------------------------------------- tables --
@@ -90,9 +90,13 @@
     add("gps", [c.latitude, c.longitude, east, north, c.altitude, c.speed, c.heading, c.accuracy, c.altitudeAccuracy]);
   }
 
+  // Worked out here rather than read off the drawn arrow: the compass stops
+  // animating while the graphs cover it.
   function target() {
     const t = targets[0];
-    if (t) add("target", [t.d, bearings[0], angles[0] === null ? NaN : wrap180(angles[0])]);
+    if (!t || !here) return;
+    const b = bearing(here.lat, here.lon, t.shop.lat, t.shop.lon);
+    add("target", [t.d, b, heading === null ? NaN : wrap180(b - heading)]);
   }
 
   function extra(kind, v) {
@@ -228,8 +232,23 @@
     work += tb ? (tb.n - i0) * (view.lines ? view.lines.length : 1) : 0;
 
     let lo, hi;
-    if (view.range) [lo, hi] = view.range;
-    else {
+    if (view.range) {
+      [lo, hi] = view.range;
+      // Angles: zoom in on what's there, unless it wraps (359 -> 0) in view.
+      let a = Infinity, b = -Infinity, wraps = false;
+      if (tb) for (const [ci] of view.lines) {
+        const col = tb.c[ci];
+        let prev = NaN;
+        for (let i = i0; i < tb.n; i++) {
+          const y = col[i];
+          if (y !== y) continue;
+          if (y < a) a = y; if (y > b) b = y;
+          if (Math.abs(y - prev) > (hi - lo) / 2) wraps = true;
+          prev = y;
+        }
+      }
+      if (isFinite(a) && !wraps) { const pad = Math.max((b - a) * 0.15, 5); lo = Math.max(lo, a - pad); hi = Math.min(hi, b + pad); }
+    } else {
       lo = Infinity; hi = -Infinity;
       if (tb) for (const [ci] of view.lines) {
         const col = tb.c[ci];
@@ -270,7 +289,7 @@
     ctx.beginPath(); ctx.rect(L, T, pw, ph); ctx.clip();
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
-    const jump = view.wrap ? (hi - lo) / 2 : Infinity; // angles: don't draw 359 -> 0 across the graph
+    const jump = view.wrap ? (view.range[1] - view.range[0]) / 2 : Infinity; // angles: don't draw 359 -> 0 across the graph
     for (const [ci, , colour] of view.lines) {
       const col = tb.c[ci];
       ctx.strokeStyle = colours[colour];
